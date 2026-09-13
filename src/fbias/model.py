@@ -68,6 +68,8 @@ class SimTFM(nn.Module, ConfigMixin):
         self.rotary_base_rescale_factor = rotary_base_rescale_factor
 
         self.lm_head = nn.Linear(hidden_size, patch_size)
+        # Only sustains T-timestep windows: the T + patch_size window needs
+        # one more row.
         self.emb_pos = (
             nn.Embedding(self.num_patches, hidden_size) if not use_rope else None
         )
@@ -110,45 +112,27 @@ class SimTFM(nn.Module, ConfigMixin):
         h = self.agg(z, mask=mask)
         return self.lm_head(h), h, z
 
-    def rollout(self, x, num_steps=1):
-        r"""Autoregressive patch-space forecast.
+    def rollout(self, x, num_patches=1):
+        r"""Autoregressively forecast ``num_patches`` patches past the context.
 
-        ``x`` ``(B, T)`` or ``(B, T, 1)``; contexts longer than
-        ``context_size`` are truncated to the most recent timesteps. The
-        context is fed as its last ``P - 1`` patches (the first patch is
-        dropped): the window's last position then predicts the first
-        out-of-window patch, a role trained for every in-window position,
-        instead of asking the full window's last position -- which in
-        training only predicts the last *in-window* patch -- to
-        extrapolate. One patch is predicted and appended per step and the
-        oldest is dropped, so every boundary prediction stays at a trained
-        position.
+        Each step predicts the patch after the window's last position and
+        appends it, dropping the oldest, so the window length is fixed and
+        every prediction is made from that same trained role. Assumes
+        training windows are ``context_size + patch_size`` timesteps, which
+        is what gives the last position a forecasting target; truncating
+        the context to ``context_size`` is the caller's job.
 
-        ``num_steps`` is in timesteps, rounded up to a patch multiple.
-        Returns ``(p_forecast, x_forecast)``: the predicted patches
-        ``(B, num_patches, patch_size)`` and their time-domain
-        concatenation ``(B, num_steps)``.
+        ``x`` ``(B, T)`` or ``(B, T, 1)``. Returns the patches
+        ``(B, num_patches, patch_size)`` -- reshape to ``(B, -1)`` for the
+        time domain.
         """
         self.eval()
         with torch.no_grad():
-            x = torch.atleast_2d(x)
-            if x.ndim == 3:
-                x = x.squeeze(-1)
-            if x.size(1) > self.context_size:
-                x = x[:, -self.context_size :]
-
-            p = self.pat(x)
-            if p.size(1) > 1:
-                p = p[:, 1:]
-
-            z = self.map(p)
-            num_patches = (num_steps + self.patch_size - 1) // self.patch_size
-            outs = []
+            z = self.map(self.pat(x))
+            p_hat = []
             for _ in range(num_patches):
                 h = self.agg(z)
-                nxt = self.lm_head(h[:, -1:])  # (B, 1, patch_size)
-                outs.append(nxt)
-                z = torch.cat([z[:, 1:], self.map(nxt)], dim=1)
-            p_forecast = torch.cat(outs, dim=1)
-            x_forecast = p_forecast.reshape(x.size(0), -1)[:, :num_steps]
-            return p_forecast, x_forecast
+                p_nxt = self.lm_head(h[:, -1:])  # (B, 1, patch_size)
+                p_hat.append(p_nxt)
+                z = torch.cat([z[:, 1:], self.map(p_nxt)], dim=1)
+            return torch.cat(p_hat, dim=1)
