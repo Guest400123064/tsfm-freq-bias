@@ -68,8 +68,6 @@ class SimTFM(nn.Module, ConfigMixin):
         self.rotary_base_rescale_factor = rotary_base_rescale_factor
 
         self.lm_head = nn.Linear(hidden_size, patch_size)
-        # Only sustains T-timestep windows: the T + patch_size window needs
-        # one more row.
         self.emb_pos = (
             nn.Embedding(self.num_patches, hidden_size) if not use_rope else None
         )
