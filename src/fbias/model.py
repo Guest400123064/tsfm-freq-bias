@@ -85,10 +85,15 @@ class SimTFM(nn.Module, ConfigMixin):
         )
 
     def pat(self, x):
+        r"""``(B, T)`` or ``(B, T, 1)`` -> ``(B, T // patch_size, patch_size)``."""
+
         x = torch.atleast_2d(x)
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
-        return x.squeeze(-1).unfold(1, self.patch_size, self.patch_size)
+        if x.ndim == 3:
+            x = x.squeeze(-1)
+        assert x.size(1) % self.patch_size == 0, (
+            f"{x.size(1)} timesteps is not a multiple of patch_size={self.patch_size}"
+        )
+        return x.unfold(1, self.patch_size, self.patch_size)
 
     def map(self, p):
         return self.encoder(p)
@@ -97,7 +102,7 @@ class SimTFM(nn.Module, ConfigMixin):
         if self.use_rope:
             return self.decoder(z, mask=mask)
         p = torch.arange(z.size(1), device=z.device, dtype=torch.long)
-        return self.decoder(z + self.pos_embedding(p), mask=mask)
+        return self.decoder(z + self.emb_pos(p), mask=mask)
 
     def forward(self, x, mask=None):
         p = self.pat(x)
@@ -106,4 +111,44 @@ class SimTFM(nn.Module, ConfigMixin):
         return self.lm_head(h), h, z
 
     def rollout(self, x, num_steps=1):
-        pass
+        r"""Autoregressive patch-space forecast.
+
+        ``x`` ``(B, T)`` or ``(B, T, 1)``; contexts longer than
+        ``context_size`` are truncated to the most recent timesteps. The
+        context is fed as its last ``P - 1`` patches (the first patch is
+        dropped): the window's last position then predicts the first
+        out-of-window patch, a role trained for every in-window position,
+        instead of asking the full window's last position -- which in
+        training only predicts the last *in-window* patch -- to
+        extrapolate. One patch is predicted and appended per step and the
+        oldest is dropped, so every boundary prediction stays at a trained
+        position.
+
+        ``num_steps`` is in timesteps, rounded up to a patch multiple.
+        Returns ``(p_forecast, x_forecast)``: the predicted patches
+        ``(B, num_patches, patch_size)`` and their time-domain
+        concatenation ``(B, num_steps)``.
+        """
+        self.eval()
+        with torch.no_grad():
+            x = torch.atleast_2d(x)
+            if x.ndim == 3:
+                x = x.squeeze(-1)
+            if x.size(1) > self.context_size:
+                x = x[:, -self.context_size :]
+
+            p = self.pat(x)
+            if p.size(1) > 1:
+                p = p[:, 1:]
+
+            z = self.map(p)
+            num_patches = (num_steps + self.patch_size - 1) // self.patch_size
+            outs = []
+            for _ in range(num_patches):
+                h = self.agg(z)
+                nxt = self.lm_head(h[:, -1:])  # (B, 1, patch_size)
+                outs.append(nxt)
+                z = torch.cat([z[:, 1:], self.map(nxt)], dim=1)
+            p_forecast = torch.cat(outs, dim=1)
+            x_forecast = p_forecast.reshape(x.size(0), -1)[:, :num_steps]
+            return p_forecast, x_forecast
