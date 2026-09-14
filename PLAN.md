@@ -1,143 +1,146 @@
-# 实验设计：TSFM 频率偏置的成因
+# Experiment Design: the origin of frequency bias in TSFMs
 
-本文件是**实验设计契约**（范围、结论目标、必须遵守的控制变量、度量定义）。
+This file is the **experiment design contract**: scope, target claims, mandatory controls, and metric definitions.
 
-- 运行日志 / 结果 / 结论 → `experiments/README.md`
-- 每个实验的意图、配置、通过标准 → `experiments/<id>/README.md`
+- Run log / results / conclusions → `experiments/README.md`
+- Per-experiment intent, config, and pass criteria → `experiments/<id>/README.md`
 
-## 0. 范围
+## 0. Scope
 
 | | |
-|---|---|
-| **问题** | 为什么 next-patch 预测模型表现出频率偏置？ |
-| **模型** | `SimTFM`：input-space next-patch、**无 RevIN**、**无 SIGReg**、RoPE、T+patch_size 训练窗口 |
-| **数据** | 合成语料（受控频谱） |
-| **产出** | 机制解释 + 合成证据；**不做修正**，不追求真实数据 forecasting 收益 |
-| **v1 目标** | 在一个干净 testbed 上**复现 lab 的结论**，不是提新主张 |
+| :-- | :-- |
+| **Question** | Why do next-patch forecasting models exhibit frequency bias? |
+| **Model** | `SimTFM`: input-space next-patch, **no RevIN**, **no SIGReg**, RoPE, `context_size + patch_size` training windows |
+| **Data** | synthetic corpora with controlled spectra |
+| **Output** | a mechanistic explanation with synthetic evidence. **No fix** — real-data forecasting gains are out of scope |
+| **v1 goal** | **reproduce the lab's conclusions** on a clean testbed, not propose new ones |
 
-v1 之所以先复现：`SimTFM` 相比 lab 的 `MiniLTFM` 少了 RevIN 和 SIGReg，而这两个都是 journal 里被证明**承重**的部件。不先确认基本现象还在，后面任何新主张都无法解释。
+Why reproduce first: `SimTFM` drops two components the journal showed to be load-bearing — RevIN and SIGReg. Until the basic phenomena are confirmed to survive without them, any new claim is uninterpretable.
 
-## 1. 起点：lab 已确立的结论
+## 1. Starting point: conclusions already established in the lab
 
-来自 `projects/temporal-batch-comp-sigreg`。v1 就是在 `SimTFM` 上重建这张表。
+From `projects/temporal-batch-comp-sigreg`. v1 rebuilds this table on `SimTFM`.
 
-| ID | 结论 | lab 证据 | 复现 |
+| ID | Conclusion | Lab evidence | Reproduced by |
 | :-- | :-- | :-- | :-- |
-| C1 | 偏置在**预测侧**，不是分辨率损失 | It.27-28：高频段在 `z` 上可复现 r²=**0.9995**，模型只给 r²≈0 / **7%** 幅度；低频斜率保留 ~54% | `1_pred_side` |
-| C2 | **patching 编码频率**，不是 transformer | It.15：`k=1` 时 f=16/32/64 几何完全相同，plane overlap **1.000** | `4_patch_granularity` |
-| C3 | shrinkage 是**学到的、位置无关的先验** | It.14：跨预测位置 `p=2..14` 比值平坦（f=32 **0.537**，f=64 **0.524**） | `2_pos_invariance` |
-| C4 | 确定性语料上 shrinkage **消失**；排序由 `Δφ` 决定 | It.29-30：15k 步后 finals **0.988–0.998**，`Δφ=π` 的那个 f 永远最慢 | `3_deterministic_dphi` |
-| C5 | **覆盖度**：训练集缺失的 f 即使确定也被阻尼 | It.31：不均匀 rich 语料收敛在 0.865，最差 cluster 0.715 | `6_coverage` |
-| C6 | 相位环几何是**纯架构性**的 | It.9：无 z-regularizer 的 direct 模型环依然存在；It.26：`dim1+2 ≥ 0.94` | `5_ring_geometry` |
+| C1 | The bias is on the **prediction side**, not a resolution loss | It.27-28: on `monash-direct-h32.pt` and `geom-rich-input.pt` — **neither of which was trained on the `f=2+f=128` mixture it was probed on** — the high band is copyable at r²=**0.9995** while the model emits r²≈0 / **7%** amplitude (r²=**−0.46** on the rich-corpus model); the low-frequency slope is kept at ~54%. It.29 is the matching control in the *other* regime: trained and probed on one pure-tone corpus, retention is **0.988–0.998**. The training marginal, not determinism, is the variable | `1_pred_side` |
+| C2 | **Patching encodes frequency**; the transformer does not | It.15: at `k=1`, f=16/32/64 have identical geometry, plane overlap **1.000** | `4_patch_granularity` |
+| C3 | Shrinkage is a **learned, position-invariant prior** | It.14: the ratio is flat across forecast positions `p=2..14` (f=32 **0.537**, f=64 **0.524**) | `2_pos_invariance` |
+| C4 | Shrinkage **vanishes** on deterministic corpora; the ordering is set by `Δφ` | It.29-30: after 15k steps finals are **0.988–0.998**, and the `Δφ=π` frequency is always the laggard | `3_deterministic_dphi` |
+| C5 | **Coverage**: frequencies absent from training stay damped even when deterministic | It.31: the uneven rich corpus converges at 0.865, worst cluster 0.715 | `6_coverage` |
+| C6 | The phase-ring geometry is **purely architectural** | It.9: rings survive in a direct input-space model with no z-regularizer; It.26: `dim1+2 ≥ 0.94` | `5_ring_geometry` |
 
-**这是概念复现，不是数值复刻。** `SimTFM` 没有 RevIN，journal 的 E3 显示 no-revin 会让环变偏心、trend tilt 塌陷；没有 SIGReg，It.49-51 显示 SIGReg 会把环拉成椭圆。所以 C6 的几何量预期会偏离 lab，这属于**已记录的差异**而不是失败。通过标准一律写成方向性判据。
+**This is a conceptual reproduction, not a numerical one.** `SimTFM` has no RevIN; the journal's E3 showed no-revin gives eccentric rings and collapses the trend tilt. It has no SIGReg; It.49-51 showed SIGReg stretches rings into ellipses. So C6's geometry is *expected* to diverge from the lab — that is a **documented difference, not a failure**. Pass criteria are therefore directional, never exact values.
 
-**决策规则**：lab 的全部主证据都是在**带 RevIN** 的模型上采集的（E3 的 no-revin 只是消融）。所以若 `1_pred_side`（C1）在本仓库的无 RevIN 模型上**不复现**，不能直接判定 lab 结论错——必须先跑一个 RevIN twin 才能把「架构差异」和「结论错误」分开。这是 v1 最大的解释风险。
+**Decision rule.** Every headline lab result was collected on a model **with RevIN** (the no-revin run was only an ablation). So if `1_pred_side` (C1) does **not** reproduce here, the lab's conclusion is not thereby refuted — a RevIN twin must be run first to separate "architectural difference" from "wrong conclusion". This is v1's largest interpretive risk.
 
-## 2. 先厘清：两种性质不同的 bias
+## 2. First, separate two different kinds of bias
 
-Plan 初稿把两者混在了一个指标里，这是最需要修的：
+The draft plan conflated these into a single metric. This is the most important correction:
 
-- **暂态（优化顺序）**：低频先学会、高频后学会。由 `Δφ = 2π·f·k/ctx (mod 2π)` 决定，**不是由 f 决定**——It.29-30 在纯确定性语料上证明它是暂态，收敛后消失。
-- **不动点（收敛后的阻尼）**：由训练边缘分布里的**条件可预测性**决定，`Δφ` 解释不了。It.31/It.14 都是它。
+- **Transient (optimization order).** Low frequencies are learned first. This is set by `Δφ = 2π·f·k/ctx (mod 2π)`, **not by `f`** — It.29-30 showed on purely deterministic corpora that it is transient and disappears at convergence.
+- **Fixed point (converged damping).** Set by the **conditional predictability** of a frequency in the training marginal. `Δφ` cannot explain it. This is what It.31 and It.14 measure.
 
-**推论**：`(高频误差 − 低频误差) / (高频误差 + 低频误差)` 这个"频谱偏置指数"不能用。误差是 `Δφ mod 2π` 的周期函数，高低频一相减就是在对周期函数做平均，换 `k` 或换 `ctx` 就能翻转符号。两者必须分开量，且频率一律在 `cycles/patch` 坐标上报。
+**Consequence:** the `(high-freq error − low-freq error) / (high-freq error + low-freq error)` "spectral bias index" is unusable. Error is a periodic function of `Δφ mod 2π`, so differencing high against low buckets averages over a periodic function — changing `k` or `ctx` flips the sign. The two must be measured separately, and frequencies reported in `cycles/patch` throughout.
 
-## 3. 实验契约（每个实验都必须遵守）
+## 3. Experiment contracts
 
-这些是 lab 花了几十个迭代买来的 confound，不是建议：
+These are confounds the lab paid dozens of iterations to learn. They are requirements, not suggestions:
 
-1. **horizon 固定在 patch 数上**。It.35/36：「小 patch 更好」最后被证明是 horizon 不一致造成的假象。跨配置比较时预测的 patch 数必须相同。
-2. **报告收敛状态，同时记录暂态**。It.21：同一配置从 10k 步增加，`k=1` 的 retention 从 0.574 涨到 0.843——一半的"偏置"其实是欠训练。
-3. **探针语料的频率成分均匀计数**。It.45/49：不均匀 cluster 密度造成的"椭圆环"结论被归因错了，真正成因是训练时长。
-4. **探针频率间隔 ≥ `ctx/k`（即 1 cycle/patch）**。It.34：正交阈值恰好是 `d = k`（`Δf=1` → 重叠 0.985，`Δf=8` → 0.29，`Δf=16` → **0.04**）。间隔更小则 DFT bin 能量泄漏，逐频 retention 直接失去意义。
-5. **每个实验都有一把 oracle 上界**。It.46：冻结 `z` 上的手工 detect→rotate→recombine 管线 MSE **0.043–0.070**，transformer head **0.44–1.55**，差 10–35×。没有 oracle 就分不清"没学会"和"不可能"。
-6. **单位**：频率以 `cycles/patch` 报，同时报 `Δφ`。
-7. **每个配置至少 3 个 seed**，报离散度；单次运行的差异不作为结论。
+1. **Fix the horizon in patches.** It.35/36: the "smaller patches are better" result turned out to be an artifact of mismatched horizons. Configs are only comparable at the same number of predicted patches.
+2. **Report the converged state and log the transient.** It.21: on one fixed config, going past 10k steps moved the `k=1` retention from 0.574 to 0.843 — half the apparent "bias" was under-training.
+3. **Count frequencies evenly in the probe corpus.** It.45/49: the "elliptical ring" conclusion drawn from an uneven cluster density was misattributed; the real cause was training duration.
+4. **Probe frequencies must be spaced ≥ `ctx/k` apart** (i.e. 1 cycle/patch). It.34: the orthogonality threshold is exactly `d = k` (`Δf=1` → overlap 0.985, `Δf=8` → 0.29, `Δf=16` → **0.04**). Any closer and DFT bins leak into each other, making per-frequency retention meaningless.
+5. **Every experiment carries an oracle upper bound.** It.46: a hand-built detect→rotate→recombine pipeline on frozen `z` reaches MSE **0.043–0.070**, while the transformer head reaches **0.44–1.55** — a 10–35× gap. Without an oracle, "did not learn" and "cannot be learned" are indistinguishable.
+6. **Report in `cycles/patch`** and state `Δφ` alongside.
+7. **At least 3 seeds per config**, reporting spread. A single run's difference is not a conclusion.
+8. **Gate every retention reading on the model's fit.** `r_f` is only meaningful for a model that has actually learned its corpus. Report variance explained (`1 − mse / var(target_patch)`) on a held-out corpus of the *same marginal* alongside every `r_f`. A model converged to the mean predictor yields `r ≈ 0` at **every** band with `r8/r1 ≈ 1`, which reads exactly like uniform damping and is not. Earned 2026-09-13: a 32-tone corpus with per-window redrawn frequencies sat at **−0.005** variance explained after 20k steps and would have been written up as a result without this gate.
+9. **RMS-match the probe to the training corpus.** Every tone in `make_mixture` has amplitude 1, so a corpus's RMS scales as `sqrt(n_tones)`; a model calibrated to one scale systematically over- or under-predicts on a probe drawn at another, and a perfectly-tracking model reads `r ≈ 2.0` when an 8-tone corpus is probed with a 2-tone signal. `make_mixture(..., normalize=True)` and `make_broad` both divide by `sqrt(n_tones)`, holding RMS at ≈0.707 regardless of tone count. This trap corrupted two independent readings before it was caught.
+10. **"Broad marginal" must mean a structured frequency family, not a uniform draw.** Redrawing each window's frequencies uniformly across the band makes the window incompressible. At `ctx 512 / k 32 / hidden 32`, a 32-tone uniform-redraw corpus plateaued at **−0.005** variance explained (mean predictor) while the *same* 32-tone set held fixed across windows reached **+0.691** and was still rising at 20k — so the failure was per-window frequency identification, not marginal breadth. The lab's rich corpus samples from 12 named clusters, i.e. a low-dimensional family; reproduce that structure rather than a uniform draw.
 
-## 4. 变量与度量定义
+## 4. Variables and metrics
 
-频率记法：`f` 以 cycles/window 记（窗长 `ctx`）。于是
+Notation: `f` is in cycles per window (window length `ctx`). Hence
 
 ```
 cycles/patch = f · k / ctx        Δφ = 2π · f · k / ctx (mod 2π)
 ```
 
-| 度量 | 定义 |
+| Metric | Definition |
 | :-- | :-- |
-| **retention** `r_f` | 某个**固定预测位置**上，预测 patch 与真实 patch 在 bin `f` 的复幅度之比 `\|P̂_f\| / \|P_f\|`。这是"半径收缩"的频域形式 |
-| **相位误差** | `angle(P̂_f) − angle(P_f)`（unwrap 后） |
-| **ring** `dim1+2` | 对每个 `f`，收集相位环上的 latents，PCA 前两维的方差占比 |
-| **plane overlap** | 两个频率各自 top-2 子空间的 Grassmann `mean(s²)`。1 = 同一平面，0 = 正交，0.5 = 共享一维 |
-| **暂态指标** | `r_f(t)` 曲线，以及到达阈值 `ε` 所需步数 |
+| **retention** `r_f` | At a **fixed forecast position**, the ratio of predicted to true complex amplitude in bin `f`: `\|P̂_f\| / \|P_f\|`. This is "radius shrinkage" in the frequency domain. |
+| **phase error** | `angle(P̂_f) − angle(P_f)`, unwrapped |
+| **ring** `dim1+2` | Per `f`, collect the latents around the phase loop, PCA, and take the variance fraction of the first two components |
+| **plane overlap** | Grassmann `mean(s²)` between the top-2 subspaces of two frequencies. 1 = identical plane, 0 = orthogonal, 0.5 = sharing one direction |
+| **transient metric** | the `r_f(t)` curve, and the number of steps to reach a threshold `ε` |
 
-`r_f` 在 oracle 上定义为 `‖P̂_f^oracle‖ / ‖P_f‖`，用来把"表示里有没有"和"head 用不用"分开。
+For the oracle, `r_f` is defined as `‖P̂_f^oracle‖ / ‖P_f‖`, which is what separates "is it in the representation" from "does the head use it".
 
-## 5. v1 实验列表
+## 5. v1 experiment list
 
-按基础设施依赖排序。`0_init` 已在仓库中建好。
+Ordered by infrastructure dependency. `0_init` already exists in the repo.
 
-### `0_init` — 基础设施 + 冒烟
+### `0_init` — infrastructure + smoke + first reproduction
 
-把 harness 跑通：`data.py` 语料构造、`cli/train.py` 训练循环（T+patch_size 窗口、input-space shifted MSE、SGD）、`probes.py` 度量。用最小配置跑一次，确认能训到 loss 下降、能出 retention 数值。
-**通过标准**：端到端跑通，产出一个可读的 sidecar JSON。
+Bring the harness up: `data.py` corpus builders, `cli/train.py` training loop (T+patch_size windows, input-space shifted MSE, SGD), `probes.py` metrics. Run once at the smallest config, confirm training reduces loss, and confirm retention can be read out.
+**Pass criterion**: end-to-end run producing a readable sidecar JSON.
 
-### `1_pred_side` — 偏置在预测侧（C1，主实验）
+### `1_pred_side` — the bias is on the prediction side (C1, headline)
 
-混合语料含低频 + 高频两个成分，间隔 ≥ 1 cycle/patch 保证 bin 可分。训练后测两件事：冻结 `z` 上的 oracle 能否重建下一 patch 的高频段；模型自己的预测保留了多少。
-**通过标准**：oracle 在高频段 r² ≥ 0.9，且 model retention ≤ 0.3，且两者差距 ≥ 3×。
-**副产品**：本仓库没有 SIGReg，所以这里若复现出 readout gap，就直接给"SIGReg 是成因"这个假设脱罪（journal backlog #1 的一支）。
+A mixed corpus with a low- and a high-frequency component, spaced ≥ 1 cycle/patch so the bins are separable. After training, measure two things: whether an oracle on frozen `z` can reconstruct the next patch's high-frequency band, and how much the model's own forecast retains.
+**Pass criterion**: oracle r² ≥ 0.9 in the high band, model retention ≤ 0.3, and a gap ≥ 3× between them.
+**By-product**: this repo has no SIGReg, so if the readout gap reproduces here, the hypothesis "SIGReg is the cause" is exonerated outright (one branch of journal backlog #1).
 
-### `2_pos_invariance` — shrinkage 位置无关（C3）
+### `2_pos_invariance` — shrinkage is position-invariant (C3)
 
-固定 `f`，扫预测位置。排除"上下文长度瓶颈"这类解释。
-**通过标准**：`r_f` 跨位置的相对变化 < 20%。
+Fix `f`, sweep the forecast position. Rules out context-length bottleneck explanations.
+**Pass criterion**: relative variation of `r_f` across positions < 20%.
 
-### `3_deterministic_dphi` — 确定性语料 + Δφ 排序（C4）
+### `3_deterministic_dphi` — deterministic corpora and the Δφ ordering (C4)
 
-纯音 / 双音确定性语料，多个 `f`，训练中每 N 步探针。
-**通过标准**：收敛后所有 `f` 的 retention ≥ 0.9；收敛步数排序与 `Δφ mod 2π` 相关，`Δφ≈π` 最慢。
+Pure-tone / two-tone deterministic corpora, several `f`, probing every N steps during training.
+**Pass criterion**: at convergence every `f` has retention ≥ 0.9; the ordering of convergence steps correlates with `Δφ mod 2π`, with `Δφ≈π` slowest.
 
-### `4_patch_granularity` — patching 编码频率（C2）
+### `4_patch_granularity` — patching encodes frequency (C2)
 
-`k=1` vs `k>1`，同一组 `f`。
-**通过标准**：`k=1` 时跨 `f` 的 plane overlap ≈ 1.000；`k>1` 时显著低于 1。
+`k=1` vs `k>1` over the same set of `f`.
+**Pass criterion**: at `k=1` plane overlap across `f` ≈ 1.000; at `k>1` substantially below 1.
 
-### `5_ring_geometry` — 相位环（C6）
+### `5_ring_geometry` — the phase ring (C6)
 
-**通过标准**：中频段 `dim1+2 ≥ 0.90`。无 RevIN 导致的偏心/塌陷按 §1 的说明记录为差异。
+**Pass criterion**: `dim1+2 ≥ 0.90` in the mid band. Eccentricity or collapse caused by the missing RevIN is recorded as a difference per §1.
 
-### `6_coverage` — 覆盖度（C5）
+### `6_coverage` — coverage (C5)
 
-训练集完全缺失某些 `f`，在这些 `f` 上用纯音探针。
-**通过标准**：off-support 的 retention 显著低于 on-support，且在确定性语料上依然如此。
+Hold out some `f` entirely from training, then probe those `f` with pure tones.
+**Pass criterion**: off-support retention is substantially below on-support, and remains so on deterministic corpora.
 
-## 6. 基础设施需求
+## 6. Infrastructure
 
-| 文件 | 内容 |
+| Path | Contents |
 | :-- | :-- |
-| `src/fbias/data.py` | 语料构造器：纯音、多音混合、rich clusters、off-support 变体 |
-| `src/fbias/probes.py` | §4 的度量 + oracle（冻结 `z` 上的 ridge / MLP） |
-| `src/fbias/cli/train.py` | 训练循环；窗口必须是 `context_size + patch_size` |
-| `experiments/<id>/scripts/` | 该实验的驱动脚本 |
-| `experiments/<id>/runs/` | state_dict + sidecar JSON |
-| `experiments/README.md` | 运行日志 |
+| `src/fbias/data.py` | corpus builders: pure tone, multi-tone mixtures, rich clusters, off-support variants |
+| `src/fbias/probes.py` | the §4 metrics plus the oracle (ridge / MLP on frozen `z`) |
+| `src/fbias/cli/train.py` | training loop; windows **must** be `context_size + patch_size` |
+| `experiments/<id>/scripts/` | driver scripts for that experiment |
+| `experiments/<id>/runs/` | `state_dict` + sidecar JSON |
+| `experiments/README.md` | run log |
 
-**默认配置**：沿用 lab canonical 的 direct 配置——`ctx 1024 / k 64 / hidden 64 / 2L / 4 heads / SGD 1e-2 / batch 64`，便于与 journal 对照。冒烟用 `ctx 512 / k 32 / hidden 32`。
+**Default config**: the lab's canonical *direct* configuration — `ctx 1024 / k 64 / hidden 64 / 2L / 4 heads / SGD 1e-2 / batch 64` — so runs stay comparable against the journal. Smoke runs use `ctx 512 / k 32 / hidden 32`.
 
-## 7. v2 候选（新主张，v1 完成后再定）
+## 7. v2 candidates (new claims; to be settled after v1)
 
-- **幅度轴**：固定 `f` 与可预测性，只动幅度分布（lognormal）。这是对 Fredformer「过度关注高能量频率」假设的直接检验。journal 只在 encoder 侧测过（It.5），readout 侧没测过。
-- **梯度探针**：量"哪些频率在降低 loss"，作为"可预测性先验"说法的机制证据。journal 完全没做。
-- **readout gap 的机制**：`z` 里有频率信息但 head 不用——为什么。v2 里这是主攻方向。
-- **频率密度**：均匀 / 对数均匀 / 双峰。
+- **Amplitude axis.** Fix `f` and predictability, vary only the amplitude distribution (lognormal). This directly tests Fredformer's "over-attention to high-energy frequencies". The journal only measured this on the encoder side (It.5); the readout side is untested.
+- **Gradient probe.** Measure which frequencies actually lower the loss, as mechanistic evidence for the "predictability prior" account. The journal never did this.
+- **Mechanism of the readout gap.** Why the head ignores frequency information that `z` demonstrably holds. This is the main v2 target.
+- **Frequency density.** Uniform / log-uniform / bimodal.
 
-## 8. 文献定位
+## 8. Related work
 
-| 工作 | 主张 | 与本设计的关系 |
+| Work | Claim | Relation to this design |
 | :-- | :-- | :-- |
-| FreIE (ICDM 2025) | 频谱偏置源于**自相关** | 控制覆盖度与噪声，可分离"自相关"与"数据可预测性"的贡献 |
-| Basri et al. (ICML 2020) | NTK 理论：偏置与**输入密度**有关 | `6_coverage` 是对该理论的直接实证检验 |
-| Fredformer (KDD 2024) | 偏置源于**过度关注高能量频率** | v2 的幅度轴直接检验 |
-| Maddix et al. (arXiv 2510.19236) | patching 引入的 temporal bias | `4_patch_granularity` |
-| Yu et al. (arXiv 2510.03358) | TS transformer 的 rank 结构 | `5_ring_geometry` 的低维性 |
+| FreIE (ICDM 2025) | Spectral bias stems from **autocorrelation** | Controlling coverage and noise separates the contributions of "autocorrelation" from "data predictability" |
+| Basri et al. (ICML 2020) | NTK theory: the bias relates to **input density** | `6_coverage` is a direct empirical test |
+| Fredformer (KDD 2024) | The bias stems from **over-attention to high-energy frequencies** | v2's amplitude axis tests this directly |
+| Maddix et al. (arXiv 2510.19236) | The temporal bias induced by patching | `4_patch_granularity` |
+| Yu et al. (arXiv 2510.03358) | Rank structure of TS transformers | the low-dimensionality measured in `5_ring_geometry` |
