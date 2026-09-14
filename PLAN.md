@@ -1,146 +1,271 @@
 # Experiment Design: the origin of frequency bias in TSFMs
 
-This file is the **experiment design contract**: scope, target claims, mandatory controls, and metric definitions.
+This file is the **experiment design contract**: the claim, the mandatory controls, and the metric definitions.
 
 - Run log / results / conclusions → `experiments/README.md`
-- Per-experiment intent, config, and pass criteria → `experiments/<id>/README.md`
+- Per-experiment intent, config, pass criteria → `experiments/<id>/README.md`
+- Sandbox (harness, generator rewrite, debugging) → `experiments/0_init/`
 
-## 0. Scope
+Scope note: the target output is an **ICLR blog-track post**, so the deliverable is one sharp,
+falsifiable claim with a clean figure — not exhaustive coverage of every axis.
+
+## 0. The claim
+
+> **Claim.** The next-patch map's amplitude contraction at frequency `f` is set by the
+> **conditional predictability of `f` in the training distribution**, not by `f` itself. Given
+> matched predictability, there is no residual dependence on frequency.
+
+This is the falsifiable form of "frequency bias is a learned prior". It decomposes into three
+independently testable parts, which are also the three levels of the research plan (§5):
+
+1. **Causal.** Perturbing the training predictability of one band moves *that band's* retention on
+   a **clean** probe.
+2. **Invariant.** The same perturbation applied to a low band vs a high band moves the *perturbed*
+   band, not the frequency. Without this step the claim is not established.
+3. **No residual.** With predictability matched, retention is flat in `f`. Any residual is
+   quantified, and that number is the claim's honest boundary.
+
+If 1–3 hold, the punchline is that **"frequency bias" is a misnomer**: it is a bias against low
+predictability, and high frequencies are merely where real data happens to be unpredictable.
 
 | | |
 | :-- | :-- |
-| **Question** | Why do next-patch forecasting models exhibit frequency bias? |
-| **Model** | `SimTFM`: input-space next-patch, **no RevIN**, **no SIGReg**, RoPE, `context_size + patch_size` training windows |
+| **Model** | `SimTFM`: input-space next-patch, **no RevIN**, **no SIGReg**, RoPE, `context_size + patch_size` windows |
 | **Data** | synthetic corpora with controlled spectra |
-| **Output** | a mechanistic explanation with synthetic evidence. **No fix** — real-data forecasting gains are out of scope |
-| **v1 goal** | **reproduce the lab's conclusions** on a clean testbed, not propose new ones |
+| **Output** | one falsifiable claim + the figure that carries it; **no fix** — real-data forecasting gains are out of scope |
 
-Why reproduce first: `SimTFM` drops two components the journal showed to be load-bearing — RevIN and SIGReg. Until the basic phenomena are confirmed to survive without them, any new claim is uninterpretable.
+**Why the framing changed.** Earlier drafts made "reproduce the lab's conclusions" the goal. That
+stalled three times, and the reason was structural: C1 as recorded describes an *observation* (the
+model emits 7% of the high band) without the condition that produced it (what the training marginal
+was), so it was not a well-posed target. It is a better fit as **P1's real-data data point** than as
+a gate (§1).
 
-## 1. Starting point: conclusions already established in the lab
+## 1. Motivation: what the lab already showed
 
-From `projects/temporal-batch-comp-sigreg`. v1 rebuilds this table on `SimTFM`.
+From `projects/temporal-batch-comp-sigreg`. This is the evidence the claim is built on — context and
+motivation, not a reproduction checklist.
 
-| ID | Conclusion | Lab evidence | Reproduced by |
-| :-- | :-- | :-- | :-- |
-| C1 | The bias is on the **prediction side**, not a resolution loss | It.27-28: on `monash-direct-h32.pt` and `geom-rich-input.pt` — **neither of which was trained on the `f=2+f=128` mixture it was probed on** — the high band is copyable at r²=**0.9995** while the model emits r²≈0 / **7%** amplitude (r²=**−0.46** on the rich-corpus model); the low-frequency slope is kept at ~54%. It.29 is the matching control in the *other* regime: trained and probed on one pure-tone corpus, retention is **0.988–0.998**. The training marginal, not determinism, is the variable | `1_pred_side` |
-| C2 | **Patching encodes frequency**; the transformer does not | It.15: at `k=1`, f=16/32/64 have identical geometry, plane overlap **1.000** | `4_patch_granularity` |
-| C3 | Shrinkage is a **learned, position-invariant prior** | It.14: the ratio is flat across forecast positions `p=2..14` (f=32 **0.537**, f=64 **0.524**) | `2_pos_invariance` |
-| C4 | Shrinkage **vanishes** on deterministic corpora; the ordering is set by `Δφ` | It.29-30: after 15k steps finals are **0.988–0.998**, and the `Δφ=π` frequency is always the laggard | `3_deterministic_dphi` |
-| C5 | **Coverage**: frequencies absent from training stay damped even when deterministic | It.31: the uneven rich corpus converges at 0.865, worst cluster 0.715 | `6_coverage` |
-| C6 | The phase-ring geometry is **purely architectural** | It.9: rings survive in a direct input-space model with no z-regularizer; It.26: `dim1+2 ≥ 0.94` | `5_ring_geometry` |
+| ID | Lab finding | Role here |
+| :-- | :-- | :-- |
+| C1 | The bias is on the **prediction side**, not a resolution loss. It.27-28: on `monash-direct-h32.pt` and `geom-rich-input.pt` — **neither trained on the `f=2+f=128` mixture it was probed on** — the high band is copyable at r²=**0.9995** while the model emits r²≈0 / **7%** amplitude (r²=**−0.46** on the rich-corpus model); the low slope is kept at ~54%. It.29 is the *other* regime: trained and probed on one pure-tone corpus, retention **0.988–0.998** | **The phenomenon to explain.** P1's real-data instance |
+| C2 | **Patching encodes frequency**; the transformer does not (It.15: at `k=1`, f=16/32/64 agree, plane overlap **1.000**) | Architecture context, not a target |
+| C3 | Shrinkage is **position-invariant** (It.14: flat across `p=2..14`; f=32 **0.537**, f=64 **0.524**) | A signature the prior must reproduce — cheap check |
+| C4 | Shrinkage **vanishes** on deterministic corpora; ordering set by `Δφ` (It.29-30: finals **0.988–0.998**, `Δφ=π` always the laggard) | The **transient**, which P3 must separate from the fixed point (§2) |
+| C5 | **Coverage**: frequencies absent from training stay damped even when deterministic (It.31: converges at 0.865, worst cluster 0.715) | The **extreme endpoint of the predictability axis**, not a separate phenomenon |
+| C6 | The phase-ring geometry is **purely architectural** (It.9; It.26: `dim1+2 ≥ 0.94`) | Architecture context, not a target |
 
-**This is a conceptual reproduction, not a numerical one.** `SimTFM` has no RevIN; the journal's E3 showed no-revin gives eccentric rings and collapses the trend tilt. It has no SIGReg; It.49-51 showed SIGReg stretches rings into ellipses. So C6's geometry is *expected* to diverge from the lab — that is a **documented difference, not a failure**. Pass criteria are therefore directional, never exact values.
+**The lab's evidence is on RevIN models; `SimTFM` has none.** The journal's E3 showed no-revin gives
+eccentric rings and collapses the trend tilt, and It.49-51 showed SIGReg stretches rings into
+ellipses. So geometry is *expected* to diverge — a documented difference, not a failure. Any claim
+about **real** TSFMs therefore needs the RevIN twin (P4).
 
-**Decision rule.** Every headline lab result was collected on a model **with RevIN** (the no-revin run was only an ablation). So if `1_pred_side` (C1) does **not** reproduce here, the lab's conclusion is not thereby refuted — a RevIN twin must be run first to separate "architectural difference" from "wrong conclusion". This is v1's largest interpretive risk.
+## 2. Two kinds of bias, and they must not be pooled
 
-## 2. First, separate two different kinds of bias
+- **Transient (optimization order).** Set by `Δφ = 2π·b (mod 2π)`, **not by `f`** — It.29-30 showed
+  on deterministic corpora that it is transient and vanishes at convergence.
+- **Fixed point (converged damping).** Set by the conditional predictability of `f` in the training
+  marginal. `Δφ` cannot explain it. This is what the claim in §0 is about.
 
-The draft plan conflated these into a single metric. This is the most important correction:
-
-- **Transient (optimization order).** Low frequencies are learned first. This is set by `Δφ = 2π·f·k/ctx (mod 2π)`, **not by `f`** — It.29-30 showed on purely deterministic corpora that it is transient and disappears at convergence.
-- **Fixed point (converged damping).** Set by the **conditional predictability** of a frequency in the training marginal. `Δφ` cannot explain it. This is what It.31 and It.14 measure.
-
-**Consequence:** the `(high-freq error − low-freq error) / (high-freq error + low-freq error)` "spectral bias index" is unusable. Error is a periodic function of `Δφ mod 2π`, so differencing high against low buckets averages over a periodic function — changing `k` or `ctx` flips the sign. The two must be measured separately, and frequencies reported in `cycles/patch` throughout.
+**Consequence:** `(high-freq error − low-freq error) / (high-freq error + low-freq error)` is
+unusable as an index. Error is a periodic function of `Δφ mod 2π`, so differencing high against low
+buckets averages over a periodic function — changing `k` or `ctx` flips the sign. The two are
+measured separately, and frequencies are reported in `cycles/patch` throughout.
 
 ## 3. Experiment contracts
 
-These are confounds the lab paid dozens of iterations to learn. They are requirements, not suggestions:
+Confounds the lab paid dozens of iterations to learn. Requirements, not suggestions.
 
-1. **Fix the horizon in patches.** It.35/36: the "smaller patches are better" result turned out to be an artifact of mismatched horizons. Configs are only comparable at the same number of predicted patches.
-2. **Report the converged state and log the transient.** It.21: on one fixed config, going past 10k steps moved the `k=1` retention from 0.574 to 0.843 — half the apparent "bias" was under-training.
-3. **Count frequencies evenly in the probe corpus.** It.45/49: the "elliptical ring" conclusion drawn from an uneven cluster density was misattributed; the real cause was training duration.
-4. **Probe frequencies must be spaced ≥ `ctx/k` apart** (i.e. 1 cycle/patch). It.34: the orthogonality threshold is exactly `d = k` (`Δf=1` → overlap 0.985, `Δf=8` → 0.29, `Δf=16` → **0.04**). Any closer and DFT bins leak into each other, making per-frequency retention meaningless.
-5. **Every experiment carries an oracle upper bound.** It.46: a hand-built detect→rotate→recombine pipeline on frozen `z` reaches MSE **0.043–0.070**, while the transformer head reaches **0.44–1.55** — a 10–35× gap. Without an oracle, "did not learn" and "cannot be learned" are indistinguishable.
+1. **Fix the horizon in patches.** It.35/36: the "smaller patches are better" result was a
+   mismatched-horizon artifact. Configs are only comparable at the same number of predicted patches.
+2. **Report the converged state and log the transient.** It.21: past 10k steps on one fixed config,
+   the `k=1` retention moved from 0.574 to 0.843 — half the apparent "bias" was under-training.
+3. **Count frequencies evenly in the probe corpus.** It.45/49: the "elliptical ring" conclusion from
+   an uneven cluster density was misattributed; the real cause was training duration.
+4. **Probe frequencies must be spaced ≥ `ctx/k` apart** (1 cycle/patch). It.34: the orthogonality
+   threshold is exactly `d = k` (`Δf=1` → overlap 0.985, `Δf=8` → 0.29, `Δf=16` → **0.04**). Closer
+   and DFT bins leak into each other, making per-frequency retention meaningless.
+5. **Every experiment carries an oracle upper bound.** It.46: a detect→rotate→recombine pipeline on
+   frozen `z` reaches MSE **0.043–0.070** against the transformer head's **0.44–1.55**, a 10–35× gap.
+   Without an oracle, "did not learn" and "cannot be learned" are indistinguishable.
 6. **Report in `cycles/patch`** and state `Δφ` alongside.
 7. **At least 3 seeds per config**, reporting spread. A single run's difference is not a conclusion.
-8. **Gate every retention reading on the model's fit.** `r_f` is only meaningful for a model that has actually learned its corpus. Report variance explained (`1 − mse / var(target_patch)`) on a held-out corpus of the *same marginal* alongside every `r_f`. A model converged to the mean predictor yields `r ≈ 0` at **every** band with `r8/r1 ≈ 1`, which reads exactly like uniform damping and is not. Earned 2026-09-13: a 32-tone corpus with per-window redrawn frequencies sat at **−0.005** variance explained after 20k steps and would have been written up as a result without this gate.
-9. **RMS-match the probe to the training corpus.** Every tone in `make_mixture` has amplitude 1, so a corpus's RMS scales as `sqrt(n_tones)`; a model calibrated to one scale systematically over- or under-predicts on a probe drawn at another, and a perfectly-tracking model reads `r ≈ 2.0` when an 8-tone corpus is probed with a 2-tone signal. `make_mixture(..., normalize=True)` and `make_broad` both divide by `sqrt(n_tones)`, holding RMS at ≈0.707 regardless of tone count. This trap corrupted two independent readings before it was caught.
-10. **"Broad marginal" must mean a structured frequency family, not a uniform draw.** Redrawing each window's frequencies uniformly across the band makes the window incompressible. At `ctx 512 / k 32 / hidden 32`, a 32-tone uniform-redraw corpus plateaued at **−0.005** variance explained (mean predictor) while the *same* 32-tone set held fixed across windows reached **+0.691** and was still rising at 20k — so the failure was per-window frequency identification, not marginal breadth. The lab's rich corpus samples from 12 named clusters, i.e. a low-dimensional family; reproduce that structure rather than a uniform draw.
+8. **Gate every retention reading on the model's fit.** `r_f` is only meaningful for a model that
+   learned its corpus. Report variance explained (`1 − mse / var(target_patch)`) on a held-out corpus
+   of the *same marginal* beside every `r_f`. A mean predictor yields `r ≈ 0` at **every** band with
+   `r8/r1 ≈ 1`, which reads exactly like uniform damping and is not. Earned 2026-09-13: a 32-tone
+   corpus with per-window redrawn frequencies sat at **−0.005** after 20k steps.
+9. **RMS-match the probe to the training corpus's *signal* power.** Every tone in a mixture has
+   amplitude 1, so a corpus's RMS scales as `sqrt(n_tones)`; a perfectly-tracking model reads
+   `r ≈ 2.0` when an 8-tone corpus is probed with a 2-tone signal. Keep **signal** power fixed across
+   all arms, add noise on top, and match the probe to the signal power — then a correct model has no
+   reason to rescale. This trap corrupted two independent readings before it was caught.
+10. **"Broad marginal" must mean a structured frequency family, not a uniform draw.** At
+    `ctx 512 / k 32 / hidden 32`, a 32-tone uniform-redraw corpus plateaued at **−0.005** variance
+    explained while the *same* 32-tone set held fixed across windows reached **+0.691** and was still
+    rising at 20k. The failure was per-window frequency identification, not marginal breadth.
+11. **Separate the three sources of "unpredictability"** — they are different mechanisms, and the
+    lab's own residual (It.31) is attributed to the second, not the first:
+    - *Irreducible noise* — the future is genuinely not a function of the past.
+    - *Observation-limited* — determined by the past but not identifiable from the observed context
+      (32 phases to infer; only a few cycles of `f` visible). It.31 invokes this; it is **not** noise.
+    - *Capacity-limited* — caught by contract 8, but unchecked it masquerades as damping.
+    Every claim must state which one it means, and the corpus must isolate it.
+12. **Noise *placement* is the instrument; noise *level* is not.** White noise is unpredictable in
+    **every** band, so it can only produce uniform damping — it is a control. Only **band-limited**
+    noise separates "the model damps the unpredictable band" from "the model damps high frequencies".
+13. **Probe with a clean signal to demonstrate a prior.** Shrinking an unpredictable band is
+    *correct* MSE behaviour. A prior is demonstrated only if the deficit **survives on a clean
+    probe**. An in-distribution probe cannot tell the two apart — this is exactly what separates
+    It.27 from It.29.
+14. **`SimTFM` has no RevIN, so absolute scale enters directly.** RevIN removed most of the input
+    scale in the lab; here marginal power density sets both the input scale and the per-window loss
+    weight (§4).
 
 ## 4. Variables and metrics
 
-Notation: `f` is in cycles per window (window length `ctx`). Hence
+Notation: `f` in cycles per window (`ctx`). Hence
 
 ```
-cycles/patch = f · k / ctx        Δφ = 2π · f · k / ctx (mod 2π)
+b = f · k / ctx        Δφ = 2π b (mod 2π)
 ```
+
+**Measure against the clean target, not the realised one.** Every corpus returns both the observed
+window and the noise-free target patch:
+
+```
+r_f = |Z(pred, b)| / |Z(clean_target, b)|
+```
+
+so `r_f = 1` means "the deterministic component was recovered exactly", *unconditionally*. Against a
+realised noisy target the correct prediction (the conditional mean) reads `r < 1` whenever the
+evaluation corpus carries noise — precisely the regime where a deficit is least interpretable. On a
+clean corpus the two definitions coincide. (This does **not** fix scale mismatch; that is contract 9.)
 
 | Metric | Definition |
 | :-- | :-- |
-| **retention** `r_f` | At a **fixed forecast position**, the ratio of predicted to true complex amplitude in bin `f`: `\|P̂_f\| / \|P_f\|`. This is "radius shrinkage" in the frequency domain. |
-| **phase error** | `angle(P̂_f) − angle(P_f)`, unwrapped |
-| **ring** `dim1+2` | Per `f`, collect the latents around the phase loop, PCA, and take the variance fraction of the first two components |
-| **plane overlap** | Grassmann `mean(s²)` between the top-2 subspaces of two frequencies. 1 = identical plane, 0 = orthogonal, 0.5 = sharing one direction |
-| **transient metric** | the `r_f(t)` curve, and the number of steps to reach a threshold `ε` |
+| **retention** `r_f` | Fixed forecast position, `\|Z(pred, b)\| / \|Z(clean target, b)\|`. The frequency-domain form of "radius shrinkage" |
+| **phase error** | `angle(Z(pred, b)) − angle(Z(clean target, b))`, unwrapped |
+| **ring** `dim1+2` | Per `f`, collect the latents around the phase loop, PCA, variance fraction of the first two components |
+| **plane overlap** | Grassmann `mean(cos²)` between two frequencies' top-2 subspaces. 1 = identical, 0 = orthogonal, 0.5 = sharing one direction |
+| **transient metric** | the `r_f(t)` curve, and steps to reach a threshold `ε` |
+| **fit gate** | variance explained on a held-out corpus of the same marginal (contract 8) |
 
-For the oracle, `r_f` is defined as `‖P̂_f^oracle‖ / ‖P_f‖`, which is what separates "is it in the representation" from "does the head use it".
+For the oracle, `r_f` uses the oracle's prediction in the numerator — which is what separates "is it
+in the representation" from "does the head use it".
 
-## 5. v1 experiment list
+**Reference probe `R`.** Defined once, shared by every arm: clean, deterministic, RMS-normalised to
+the training signal power, frequencies spaced ≥ 1 cycle/patch, fixed seed. The prior is read off as
+`r_f(R)` versus the training marginal.
 
-Ordered by infrastructure dependency. `0_init` already exists in the repo.
+**The predictability knob θ.** Band-limited additive noise at a swept SNR, with two endpoints:
+*clean* (θ = 1) and *off-support* (the frequency is absent from training entirely, so the model has
+no basis to predict it). **Coverage is therefore the extreme of the same axis, not a separate
+phenomenon** — which is what makes C5's D2-style result (off-support at `r = 0.66`) a point on the
+main curve rather than a side result.
 
-### `0_init` — infrastructure + smoke + first reproduction
+## 5. Research plan
 
-Bring the harness up: `data.py` corpus builders, `cli/train.py` training loop (T+patch_size windows, input-space shifted MSE, SGD), `probes.py` metrics. Run once at the smallest config, confirm training reduces loss, and confirm retention can be read out.
-**Pass criterion**: end-to-end run producing a readable sidecar JSON.
+Ordered so the load-bearing figure appears as early as possible, and so each step can kill the claim.
 
-### `1_pred_side` — the bias is on the prediction side (C1, headline)
+### P0 — instrument check (go/no-go) — *running*
 
-A mixed corpus with a low- and a high-frequency component, spaced ≥ 1 cycle/patch so the bins are separable. After training, measure two things: whether an oracle on frozen `z` can reconstruct the next patch's high-frequency band, and how much the model's own forecast retains.
-**Pass criterion**: oracle r² ≥ 0.9 in the high band, model retention ≤ 0.3, and a gap ≥ 3× between them.
-**By-product**: this repo has no SIGReg, so if the readout gap reproduces here, the hypothesis "SIGReg is the cause" is exonerated outright (one branch of journal backlog #1).
+**Question.** Does *any* manipulation of the training distribution move clean-probe retention at a
+fixed frequency? Design: fixed clean 2-tone probe, only the *band placement* of training noise
+varies (`clean` / `noise_hi` / `noise_lo` / `noise_all`), 3 seeds.
+**Kills the project early if:** no arm moves the probe. **Cost:** minutes.
 
-### `2_pos_invariance` — shrinkage is position-invariant (C3)
+### P1 — the dose–response (the load-bearing figure)
 
-Fix `f`, sweep the forecast position. Rules out context-length bottleneck explanations.
-**Pass criterion**: relative variation of `r_f` across positions < 20%.
+**Question.** Does the clean-probe retention of a band track that band's predictability in the
+training marginal? Design: with signal power, occurrence and tone structure held fixed, sweep the
+SNR of band-limited noise on one band across ~4 levels, plus the off-support endpoint. Read `r_f(R)`
+at that band.
+**Supports the claim if:** monotone in training predictability, starting at ≈1 for the clean arm.
+**Also a check on itself:** report `r_f` against the *fit gate* and the seed spread (contracts 8, 7).
+**Cost:** ~15 runs × ~1 min at the smoke config.
 
-### `3_deterministic_dphi` — deterministic corpora and the Δφ ordering (C4)
+### P2 — invariance in `f` (the money claim)
 
-Pure-tone / two-tone deterministic corpora, several `f`, probing every N steps during training.
-**Pass criterion**: at convergence every `f` has retention ≥ 0.9; the ordering of convergence steps correlates with `Δφ mod 2π`, with `Δφ≈π` slowest.
+**Question.** Does the damping follow the *perturbed* band or the frequency? Design: P1's
+perturbation applied to a **low** band, giving a 2×2 (perturbed band × predictability), then extend
+to a proper `f` sweep with an intermediate band.
+**This is the step that converts "predictability matters" into "frequency per se is not the
+variable".** Without it the claim is not established, however clean P1 looks.
 
-### `4_patch_granularity` — patching encodes frequency (C2)
+### P3 — residual in `f` (the claim's boundary)
 
-`k=1` vs `k>1` over the same set of `f`.
-**Pass criterion**: at `k=1` plane overlap across `f` ≈ 1.000; at `k>1` substantially below 1.
+**Question.** With predictability matched across frequencies, what is left? Report `r_f` across
+`b = 1..8` at matched θ, plus `Δφ` alongside. Any residual is either the transient (§2) or
+architectural — say which, and give it a number. **The honest wording of the claim depends on this.**
 
-### `5_ring_geometry` — the phase ring (C6)
+### P4 — controls
 
-**Pass criterion**: `dim1+2 ≥ 0.90` in the mid band. Eccentricity or collapse caused by the missing RevIN is recorded as a difference per §1.
+- **Reversibility.** P1's clean arm already covers it; state it explicitly.
+- **RevIN twin.** Mandatory before any claim about real TSFMs (contract 14, §1).
+- **Capacity sweep** (`hidden`): rules out "this is just a small model".
 
-### `6_coverage` — coverage (C5)
+### P5 — mechanism (the blog's payoff)
 
-Hold out some `f` entirely from training, then probe those `f` with pure tones.
-**Pass criterion**: off-support retention is substantially below on-support, and remains so on deterministic corpora.
+**Gradient probe.** Measure which frequencies actually lower the loss. This upgrades the behavioural
+claim to a mechanistic one: the model is doing predict-the-conditional-mean, and the high band
+contributes little *because* it is unpredictable.
 
 ## 6. Infrastructure
 
 | Path | Contents |
 | :-- | :-- |
-| `src/fbias/data.py` | corpus builders: pure tone, multi-tone mixtures, rich clusters, off-support variants |
-| `src/fbias/probes.py` | the §4 metrics plus the oracle (ridge / MLP on frozen `z`) |
+| `src/fbias/data.py` | corpus builders |
+| `src/fbias/probes.py` | the §4 metrics + the oracle |
 | `src/fbias/cli/train.py` | training loop; windows **must** be `context_size + patch_size` |
-| `experiments/<id>/scripts/` | driver scripts for that experiment |
-| `experiments/<id>/runs/` | `state_dict` + sidecar JSON |
+| `experiments/<id>/scripts/`, `runs/` | driver + `state_dict` + sidecar JSON |
 | `experiments/README.md` | run log |
 
-**Default config**: the lab's canonical *direct* configuration — `ctx 1024 / k 64 / hidden 64 / 2L / 4 heads / SGD 1e-2 / batch 64` — so runs stay comparable against the journal. Smoke runs use `ctx 512 / k 32 / hidden 32`.
+**Config.** Smoke/development: `ctx 512 / k 32 / hidden 32 / 2L / 4 heads / SGD 1e-2 / batch 64`
+(both `ctx/k` choices give `P = 16` patches, so the frequency grid is identical to the lab's and
+only Nyquist differs). Headline runs: the lab's canonical *direct* config
+`ctx 1024 / k 64 / hidden 64`.
 
-## 7. v2 candidates (new claims; to be settled after v1)
+### Corpus builder: what to build now, what to defer
 
-- **Amplitude axis.** Fix `f` and predictability, vary only the amplitude distribution (lognormal). This directly tests Fredformer's "over-attention to high-energy frequencies". The journal only measured this on the encoder side (It.5); the readout side is untested.
-- **Gradient probe.** Measure which frequencies actually lower the loss, as mechanistic evidence for the "predictability prior" account. The journal never did this.
-- **Mechanism of the readout gap.** Why the head ignores frequency information that `z` demonstrably holds. This is the main v2 target.
-- **Frequency density.** Uniform / log-uniform / bimodal.
+The generator is being rewritten. **Build only what P0–P2 need; add an axis when a specific
+experiment requires it.** Letting the generator become the project is the failure mode this repo
+inherits from the lab (50 iterations, most of them infrastructure).
+
+**Required for P0–P2:**
+
+| Requirement | Why |
+| :-- | :-- |
+| Return `(observed_window, clean_target_patch)` | §4's measurement definition |
+| **Band-limited noise** with sweepable SNR, band chosen per arm | contracts 12, 13 |
+| **Signal power fixed** across arms; noise added on top; probe normalised to signal power | contract 9 |
+| **Off-support** variant (a frequency held out entirely) | θ's extreme endpoint (C5) |
+| Fixed frequency set within a corpus; per-window phases | contract 10 |
+| Frequencies spaced ≥ 1 cycle/patch; report `b` and `Δφ` | contracts 4, 6 |
+| Report variance explained on a held-out same-marginal corpus | contract 8 |
+
+**Deferred to P6 (robustness) — do not build yet:**
+
+| Axis | Note |
+| :-- | :-- |
+| Occurrence vs marginal power density | currently **identical by construction** (equal per-tone power ⇒ marginal power ∝ occurrence; measured `power/count` std = 1e-2 over a 3469× range). Decoupling needs its own experiment |
+| Conditional amplitude (amplitude given presence) | the amplitude–frequency coupling axis |
+| Per-window tone count | per-signal complexity ≠ population coverage |
+| Phase structure (independent vs locked) | untested anywhere; plausibly a large effect |
+| Bin alignment (integer vs off-grid `b`) | matters for the transient, not the fixed point |
+| Non-stationarity: offset, trend, level shift | our model has no RevIN, so this is currently assumed away |
+| Per-window power CV | bandwidth-dependent (measured 15% tight `peaks` vs 5.6% `broad`); report it when a corpus has clustered bandwidths |
+
+## 7. Robustness backlog (P6+)
+
+Only after P0–P5. Each is a small experiment, not a research line: phase structure; tone count;
+occurrence/power decoupling; amplitude coupling; bin alignment; non-stationarity.
 
 ## 8. Related work
 
-| Work | Claim | Relation to this design |
+| Work | Claim | Relation |
 | :-- | :-- | :-- |
-| FreIE (ICDM 2025) | Spectral bias stems from **autocorrelation** | Controlling coverage and noise separates the contributions of "autocorrelation" from "data predictability" |
-| Basri et al. (ICML 2020) | NTK theory: the bias relates to **input density** | `6_coverage` is a direct empirical test |
-| Fredformer (KDD 2024) | The bias stems from **over-attention to high-energy frequencies** | v2's amplitude axis tests this directly |
-| Maddix et al. (arXiv 2510.19236) | The temporal bias induced by patching | `4_patch_granularity` |
-| Yu et al. (arXiv 2510.03358) | Rank structure of TS transformers | the low-dimensionality measured in `5_ring_geometry` |
+| FreIE (ICDM 2025) | Spectral bias stems from **autocorrelation** | A predictability manipulation separates "autocorrelation" from "data predictability" |
+| Basri et al. (ICML 2020) | NTK: the bias relates to **input density** | The occurrence arm of P6 is the direct empirical test |
+| Fredformer (KDD 2024) | The bias stems from **over-attention to high-energy frequencies** | The conditional-amplitude arm of P6 tests this |
+| Maddix et al. (arXiv 2510.19236) | The temporal bias induced by patching | P2's `f` sweep, since `Δφ` is `k`-dependent |
+| Yu et al. (arXiv 2510.03358) | Rank structure of TS transformers | the `dim1+2` measurement |
