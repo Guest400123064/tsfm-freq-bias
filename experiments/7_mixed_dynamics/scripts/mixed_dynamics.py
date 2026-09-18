@@ -87,6 +87,7 @@ WELL = BANDS[:-1]  # b16 is Nyquist: excluded from every statistic
 FREQS = tuple(b * CTX / PATCH for b in BANDS)
 TOTAL_POWER = 0.5
 ALPHA, SIGMA = 1.0, 0.8
+MIN_SHARE = 0.01
 PROBE_SEED = 1901
 SEED_STRIDE = 1000
 GATE = 0.5
@@ -98,11 +99,37 @@ N_BINS = 10
 RUNS = Path(__file__).resolve().parents[1] / "runs"
 
 
-def mean_profile():
-    r"""The red mean spectrum, normalised to ``TOTAL_POWER``."""
-    w = [b ** (-ALPHA) for b in BANDS]
+SHAPE = "red"  # "red" (monotone in frequency) or "bimodal" (two humps)
+
+
+def mean_profile(shape=None):
+    r"""The corpus mean spectrum, normalised to ``TOTAL_POWER``.
+
+    ``red``: ``P_b ~ b**(-alpha)`` -- share falls monotonically with frequency,
+    so share and band identity are collinear and a run on it alone cannot say
+    whether the ordering is by power or by frequency.
+
+    ``bimodal``: two humps at b4 and b13 -- the share ranking is
+    b4, b13, b5, b12, b3, b14, b6, b11, b2, b15, b7, b10, b1, b8, b9, i.e.
+    **b1 is slow and b13 fast**, which no monotone frequency account can produce.
+    Both profiles are floored at ``MIN_SHARE`` (inactive for the red one, whose
+    smallest share is 1.85%).
+    """
+    shape = shape or SHAPE
+    if shape == "bimodal":
+        w = [
+            math.exp(-0.5 * ((b - 4.0) / 2.0) ** 2)
+            + math.exp(-0.5 * ((b - 13.0) / 2.0) ** 2)
+            for b in BANDS
+        ]
+    elif shape == "red":
+        w = [b ** (-ALPHA) for b in BANDS]
+    else:
+        raise SystemExit(f"unknown shape {shape}")
     s = sum(w)
-    return tuple(TOTAL_POWER * x / s for x in w)
+    w = [max(x, MIN_SHARE * s) for x in w]
+    s2 = sum(w)
+    return tuple(TOTAL_POWER * x / s2 for x in w)
 
 
 MEAN = mean_profile()
@@ -175,8 +202,13 @@ def generator_check():
     }
 
 
-def train(seed, steps, ckpt, hidden, layers):
-    r"""Train on the mixed corpus, evaluating the probe every ``ckpt`` steps."""
+def train(seed, steps, ckpt, hidden, layers, fine=0, fine_until=0):
+    r"""Train on the mixed corpus, evaluating the probe on a checkpoint schedule.
+
+    ``fine`` steps up to ``fine_until``, then ``ckpt``. The fine phase exists
+    because ``t80`` is otherwise quantised to the coarse interval and the fast
+    bands all tie at the first checkpoint (P14: b1-b4; P15 bimodal: 8 of 15).
+    """
     torch.manual_seed(seed)
     model = SimTFM(
         context_size=CTX,
@@ -198,7 +230,7 @@ def train(seed, steps, ckpt, hidden, layers):
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
-        if step % ckpt == 0:
+        if (fine and step <= fine_until and step % fine == 0) or step % ckpt == 0:
             t0 = time.time()
             row = evaluate(model, held, prb)
             row["step"] = step
@@ -352,6 +384,9 @@ def ms(pair, width=10, digits=4):
 
 
 def build(args):
+    global SHAPE, MEAN
+    SHAPE = args.shape
+    MEAN = mean_profile()
     t0 = time.time()
     seeds = tuple(args.seeds) if args.seeds else SEEDS
     print(
@@ -360,7 +395,8 @@ def build(args):
     )
     print(
         f"ctx {CTX} / patch {PATCH} / hidden {args.hidden} / {args.layers}L / "
-        f"{HEADS} heads | SGD lr {LR} / batch {BATCH} / checkpoint {args.ckpt} / cpu",
+        f"{HEADS} heads | SGD lr {LR} / batch {BATCH} / checkpoints "
+        f"{args.ckpt_fine} to {args.ckpt_fine_until} then {args.ckpt} / cpu",
         flush=True,
     )
     print(
@@ -390,6 +426,8 @@ def build(args):
             "heads": HEADS,
             "steps": args.steps,
             "ckpt": args.ckpt,
+            "ckpt_fine": args.ckpt_fine,
+            "ckpt_fine_until": args.ckpt_fine_until,
             "batch": BATCH,
             "lr": LR,
             "n_per": N_PER,
@@ -397,6 +435,8 @@ def build(args):
             "device": "cpu",
             "bands": list(BANDS),
             "freqs": list(FREQS),
+            "shape": SHAPE,
+            "min_share": MIN_SHARE,
             "alpha": ALPHA,
             "sigma": SIGMA,
             "total_power": TOTAL_POWER,
@@ -416,7 +456,15 @@ def build(args):
     for seed in seeds:
         t = time.time()
         print(f"  seed {seed}", flush=True)
-        _, marks, _ = train(seed, args.steps, args.ckpt, args.hidden, args.layers)
+        _, marks, _ = train(
+            seed,
+            args.steps,
+            args.ckpt,
+            args.hidden,
+            args.layers,
+            args.ckpt_fine,
+            args.ckpt_fine_until,
+        )
         rec["seeds"].append({"seed": seed, "marks": marks, "wall": time.time() - t})
     rec["wall"] = time.time() - t0
     rec["decision"] = decide(rec)
@@ -514,7 +562,22 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--seeds", nargs="+", type=int, default=None, help="subset of seeds")
     p.add_argument("--steps", type=int, default=STEPS, help="training steps")
+    p.add_argument(
+        "--shape",
+        choices=("red", "bimodal"),
+        default=SHAPE,
+        help="corpus mean spectrum",
+    )
     p.add_argument("--ckpt", type=int, default=CKPT, help="checkpoint interval")
+    p.add_argument(
+        "--ckpt-fine",
+        type=int,
+        default=0,
+        help="finer interval for the first --ckpt-fine-until steps",
+    )
+    p.add_argument(
+        "--ckpt-fine-until", type=int, default=5000, help="end of the fine phase"
+    )
     p.add_argument("--hidden", type=int, default=HIDDEN, help="hidden size")
     p.add_argument("--layers", type=int, default=LAYERS, help="transformer layers")
     p.add_argument("--tag", default="", help="suffix for the output JSON")

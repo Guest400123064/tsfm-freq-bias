@@ -54,3 +54,35 @@ b16 (Nyquist) is excluded from every statistic, as in P12/P13.
 ## Status
 
 Running: 3 seeds × 20 000 steps, checkpoint every 1 000.
+
+## Variant: bimodal mean spectrum (`--shape bimodal`)
+
+P14's corpus mean is a red spectrum, so its share is **monotone in band** and the run alone cannot
+say whether the curve ordering is by power or by frequency — that separation currently rests on P13.
+The bimodal variant removes that degeneracy inside a single run: two humps at b4 and b13, same
+per-window lognormal jitter (σ = 0.8) and 1% share floor. The resulting share ranking is
+
+```
+b4 0.099  b13 0.104  b5 0.089  b12 0.094  b3 0.087  b14 0.090  ...  b7 0.034  b1 0.034
+...  b8 0.020  b9 0.019   <- the two quietest, in the middle of the band range
+```
+
+so the predicted family is **b4, b13 first and b8, b9 last**, with b1 (the lowest frequency) in the
+slow half. No monotone frequency account produces that ordering: a low-frequency preference predicts
+b1 *fastest*, and a high-frequency suppression predicts b15 *slowest*.
+
+Pre-registered additions for this variant:
+
+3. `Spearman(log share_b, t80_b) ≤ −0.8` (same criterion, corrected sign);
+4. **counter-monotone check** — `t80(b1) > t80(b4)` **and** `t80(b1) > t80(b13)`: the lowest
+   frequency is slower than both humps, which "low frequency is preferred" cannot produce.
+
+A smoke run at 3 000 steps already previews it: `r` at b4 0.968, b13 ~0.96, b1 0.920 against
+b8 0.688 and b9 0.747 — ordered by share, not by frequency.
+
+**Probe shape (not yet run).** A pure-tone probe is tempting here because a mixed corpus cannot
+shape-lock the model, but it breaks one of two controls: amplitude-matched pure tones leave the
+window at a fraction of 0.5 total power (RMS mismatch, and there is no RevIN — contract 14), while
+RMS-matched pure tones make the weak bands ~12× louder than anything in training. The plan is to add
+both as a **probe-robustness panel** beside the shape-matched marginal probe, not to replace it —
+T2's phantom 7.9× "bias" came from exactly a shape-mismatched probe.

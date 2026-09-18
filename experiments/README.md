@@ -1846,3 +1846,145 @@ Three defects found by an independent visual pass and fixed, in order of how muc
 The visual check was done by a subagent with image access, twice — once to find the defects, once to
 confirm the fixes — because the code author cannot see the PNGs. Both rounds reported the on-disk
 files as pixel-identical to the current script's output.
+
+## 2026-09-17 — P15 (bimodal marginal): the ordering is by share, within one run
+
+P14's corpus mean is red, so its share is monotone in band and the run cannot separate "ordered by
+power" from "ordered by frequency". The bimodal variant removes that degeneracy in a single run:
+two humps at b4 and b13, same per-window lognormal jitter (σ = 0.8) and 1% share floor.
+
+```
+1. final checkpoint: fit gate ok, oracle minimum 0.9645 (>= 0.9)                  PASS
+2. ordering: Spearman(log share, t80) = -0.721   (<= -0.8 required)               marginal FAIL
+3. time collapse: worst within-bin spread 0.196 (tol 0.15)                        FAIL
+4. counter-monotone: t80(b1) = 2333 > t80(b4) = t80(b13) = 1000                   PASS
+```
+
+**Why check 2 failed, and why it is a measurement artefact.** 8 of the 15 bands reach r = 0.8 before
+the first checkpoint, so their `t80` is tied at the 1 000-step floor; a rank correlation over a list
+that is more than half ties is diluted. The bimodal corpus has a narrower share spread than the red
+one (5.6× against 12.2×) and fewer very-quiet bands, so more bands saturate inside the first 1 000
+steps. Floor-free versions of the same statistic, computed from the stored curves:
+
+```
+Spearman(log share, t80)            -0.721   <- pre-registered, floor-limited
+Spearman(log share, mean deficit)   -0.921   <- floor-free
+Spearman(log share, deficit at 3k)  -0.950   <- floor-free
+```
+
+**Check 4 is the one this variant exists for, and it passes decisively**: the lowest frequency is
+2.3× slower than both humps, which "low frequency is preferred" cannot produce.
+
+**The cleanest reading is by share group** — the bimodal design happens to place several bands of
+*different* frequency at the *same* share, which is a within-run version of P13's cross-shape test:
+
+```
+share group        bands                mean deficit (20 checkpoints)
+0.019              b8, b9               0.138
+0.034              b1, b7, b10          0.070
+0.064-0.066        b15, b2, b6, b11     0.037
+0.087-0.104        b3, b5, b12, b13, b14, b4  0.028
+```
+
+Within a group the bands span low, middle and high frequency and agree; across groups the deficit
+falls monotonically as the share rises. b1 — the lowest frequency in the set — sits in the
+**second-worst** group, and b13 — a *high* band — sits in the best.
+
+**The collapse fails again (0.196)**, as in P14 (0.186), for the same reason: the bands share a
+trunk, so their curves differ in shape and not merely in scale. Two corpora, two budgets, same
+outcome — this is now a reproducible negative result about the strongest form of the claim, and the
+verdict branch was pre-registered.
+
+**Red path unchanged.** `--shape red` reproduces P14's generator bit-for-bit (identical realised
+shares), so P14's result stands as-is; the bimodal variant is additional evidence, not a revision.
+
+**Open, cheap fix — now running.** A rerun with finer early checkpoints (every 250 steps to 5k, then
+1k; 35 checkpoints per seed instead of 20) resolves `t80` for the fast bands and lets the
+pre-registered statistic be read without ties. Same seeds and config, so the training is
+bit-identical — the fine run's 1 500-step smoke reproduces the coarse smoke's `loss 3.229e-02`,
+`r@1 0.806`, `r@15 0.910` exactly — and only the sampling of the trajectory changes. The
+pre-registered criteria are unchanged; the verified prediction is that the 8 bands pinned at the
+floor resolve to 250–1 000 steps and the Spearman moves toward the floor-free values (−0.921 on the
+area statistic, −0.950 at 3k).
+
+### P15 figures and two hardcoded labels
+
+`figures_bimodal/` holds the same 13 panels for the bimodal run (`--out figures_bimodal`; the script
+now takes an output subdirectory). The visual check confirmed the signatures this variant exists for:
+in `p14_heatmap_r.png` the darkest row is a **mid-axis stripe** (b8/b9, row means 0.860/0.863 against
+0.92–0.98 elsewhere) rather than an edge; in `p14_early_share_vs_r.png` points of different colours
+share one rising curve, with b1 (lowest frequency) in the lower-middle; and `p14_t80_share.png` shows
+the 8 floored bands as a horizontal row.
+
+**Two labels were hardcoded to the red run and silently became wrong** when the corpus changed:
+`p14_scaling_law.png` annotated "b1–b4 censored" (the bimodal run floors b2,b3,b4,b5,b11–b14 and
+leaves b1 at 2 333) and `setup_shapes.png` titled the corpus "alpha=1.0". Both are now derived from
+the run (`N of 15 bands censored`; the mean spectrum's name, via `config.get("shape", "red")` so the
+older JSONs without the key still render correctly). A third fix: the early panels draw low-share
+points last, so b1 is no longer overdrawn by b7/b10 (was ~40 % of its marker visible, now 100 %).
+
+Worth recording as a process failure, because it happened three times in this session: **string
+replacements against a file that a formatter has since rewritten fail silently.** Each time the
+patch reported success (the script ran, the file was written, lint passed) while changing nothing,
+and only the independent visual check caught it. The fix that worked was to read the file, then use
+an edit tool that errors when its anchor is absent.
+
+## 2026-09-17 — P15 fine-checkpoint rerun: the marginal failure of the ordering test was censoring, and the full t80 table is a share ladder
+
+The bimodal run was repeated with `--ckpt-fine 250 --ckpt-fine-until 5000` (35 checkpoints per seed
+instead of 20). Same seeds and config: **bit-identical training** — at the 60 checkpoints the two runs
+share, the worst |Δ| over every `r@b` and `dk@b` is **0.0**. Only the sampling of the trajectory
+changes, which is what the earlier marginal failure needed.
+
+```
+1. final checkpoint: fit gate ok, oracle minimum 0.9645 (>= 0.9)      PASS
+2. ordering: Spearman(log share, t80) = -0.954  (<= -0.8 required)    PASS   (was -0.721)
+3. time collapse: worst within-bin spread 0.244 (tol 0.15)            FAIL   (was 0.196)
+4. counter-monotone: t80(b1) = 1917 > t80(b4) = 583, t80(b13) = 667   PASS
+-> "power sets the order but not one universal time constant"
+```
+
+**Check 2 was failing on the quantisation, not on the data.** With 1 000-step sampling, 8 of 15 bands
+tied at the floor; at 250-step resolution the whole table resolves and the correlation is −0.954 —
+right where the floor-free statistics had put it (−0.921 on the area statistic, −0.950 at 3k). The
+earlier verdict string is superseded.
+
+**The resolved t80 table is a clean function of share, and it is not a function of frequency:**
+
+```
+share            bands                t80
+0.099 / 0.090    b4,  b14             583      <- b4 is low-mid
+0.094 / 0.104    b12, b13             667      <- b13 is the highest band in the set
+0.087 / 0.089    b3,  b5              750
+0.064-0.066      b15, b2, b6, b11     917      <- b15 is the *highest* frequency of all
+0.034            b7, b1, b10          1750-2083  <- b1 is the lowest frequency of all
+0.019-0.020      b9,  b8              3833, 4250
+```
+
+Every row of that table holds bands from opposite ends of the spectrum at the same `t80`: b15 (the
+Nyquist-adjacent band) learns as fast as b2, and b1 (the lowest band) learns as slowly as b7 and b10.
+The counter-monotone check is decisive — the lowest frequency needs **3.3× longer** than b4 and
+**2.9× longer** than b13 — and no monotone frequency account produces the table's shape.
+
+**The collapse fails again, and harder (0.244 vs 0.196).** That is the expected direction: with only
+1 000-step sampling the statistic was blind to the steepest part of the rise, where the curves differ
+most. Finer sampling does not rescue the one-curve claim, it strengthens the negative result. Three
+corpora (P14 red, P15 bimodal coarse and fine) now agree that the family is ordered by share but not
+a single rescaled curve.
+
+**Figures**: `figures_bimodal_fine/` (13 panels) is generated from this run and supersedes
+`figures_bimodal/` for visual reading, since the sampling is three times denser; the coarse JSON
+remains as the first pre-registered record of the bimodal variant.
+
+### Fine-grid figures and a tick-label bug
+
+`figures_bimodal_fine/` (13 panels) is generated from the fine run; `figures/` and `figures_bimodal/`
+were regenerated with the same code. One defect found by the visual check and fixed: the x-tick
+thinning applied `step % stride` to the **step value** instead of the **column index**, so the fine
+heatmap showed a duplicate `3k` and a misleading `0k` (750 ms read as "0k", 3 750 as "3k"). Now
+index-based, labels read `0.25k, 1k, 1.75k, 2.5k, 3.25k, 4k, 4.75k, 7k, 10k, 13k, 16k, 19k` on the
+35-column grid and `1k … 19k` on the 20-column one, both verified free of duplicates, overlap and
+clipping, with the cell grids reconstructed against the run JSON (max abs error 0.0017).
+
+That is the fourth silent failure of this kind in the session — the others were string replacements
+that missed their anchor. This one at least produced a visible artefact that the check could catch.

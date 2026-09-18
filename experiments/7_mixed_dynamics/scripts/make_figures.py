@@ -137,9 +137,8 @@ def fig_setup_shapes(rec, p13):
     )
     ax[1].set_yscale("log")
     ax[0].set_yscale("log")
-    ax[1].set_title(
-        f"P14 corpus: per-window shapes (alpha={rec['config']['alpha']}, sigma={sigma})"
-    )
+    shape = rec["config"].get("shape", "red")
+    ax[1].set_title(f"corpus: per-window shapes ({shape} mean, sigma={sigma})")
     ax[1].legend(fontsize=8)
     for a in ax:
         a.set_xlabel("band index $b$")
@@ -189,6 +188,8 @@ def fig_heatmap(rec, field, fname, label, cmap):
     if np.isnan(m).all():
         print(f"  skip {fname}: no {field} recorded in any run")
         return
+    stride = max(1, len(steps) // 10)  # a fine checkpoint grid would repeat "0k"
+    labels = [f"{s / 1000:g}k" if k % stride == 0 else "" for k, s in enumerate(steps)]
     fig, ax = plt.subplots(figsize=(6.4, 5.2))
     sns.heatmap(
         m,
@@ -196,7 +197,7 @@ def fig_heatmap(rec, field, fname, label, cmap):
         cmap=cmap,
         vmin=float(np.nanmin(m)),
         vmax=float(np.nanmax(m)),
-        xticklabels=[f"{s // 1000}k" for s in steps],
+        xticklabels=labels,
         yticklabels=[f"b{int(b)}" for b in bands],
         cbar_kws={"label": label},
     )
@@ -337,7 +338,7 @@ def fig_early(rec):
     fig, ax = plt.subplots(1, len(marks), figsize=(4.1 * len(marks), 4.0), sharey=True)
     cmap = plt.get_cmap("turbo")
     for a, k in zip(np.atleast_1d(ax), marks):
-        for b in bands:
+        for b in sorted(bands, key=lambda x: -shares[x]):
             a.scatter(shares[b], curves[b][k], color=cmap((b - 1) / 15), s=45, zorder=3)
         a.set_xscale("log")
         a.set_xlabel("band's share of the loss")
@@ -425,8 +426,11 @@ def fig_scaling_law(rec):
     ):
         ax[0].plot(xr, tm * (xr / gm) ** (-gamma), style, color=col, label=lab)
     ax[0].set_ylim(min(ys) * 0.75, max(ys) * 1.35)
+    floor = min(d["t80"].values())
+    floored = [b for b in d["shares"] if d["t80"][b] <= floor]
     ax[0].annotate(
-        r"$t_{80}$ floor = 1k: b1-b4 censored",
+        f"$t_{{80}}$ floor = {floor / 1000:.0f}k: "
+        f"{len(floored)} of {len(d['shares'])} bands censored",
         xy=(max(xs), min(ys)),
         xytext=(-6, 10),
         textcoords="offset points",
@@ -492,7 +496,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--p14-tag", default="s20k")
     ap.add_argument("--p13-tag", default="s10k")
+    ap.add_argument("--out", default="figures", help="output subdirectory")
     args = ap.parse_args(argv)
+    global OUT
+    OUT = ROOT / "experiments/7_mixed_dynamics" / args.out
     OUT.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid", context="notebook")
     recs, p13 = load(args.p14_tag, args.p13_tag)
