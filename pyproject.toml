@@ -10,6 +10,7 @@ dependencies = [
     "just-config-mixin>=0.1.1",
     "polars[pyarrow]>=1.44.1",
     "rich>=15.0.0",
+    "seaborn>=0.13.2",
     "tensorblob>=0.3.0",
     "torch<2.8.0",
     "trackio>=0.34.0",

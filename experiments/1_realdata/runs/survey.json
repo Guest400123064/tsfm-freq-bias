@@ -1,0 +1,126 @@
+{
+  "solar_10_minutes_dataset": {
+    "n_series": 137,
+    "frequency": "10_minutes",
+    "step_minutes": 10.0,
+    "length": {
+      "min": 52560,
+      "median": 52560.0,
+      "max": 52560,
+      "total": 7200720
+    },
+    "lengths_distinct": 1,
+    "windows_per_series_nonoverlap": {
+      "min": 96,
+      "median": 96.0,
+      "max": 96
+    },
+    "windows_total_nonoverlap": 13152,
+    "nan_frac_mean": 0.0,
+    "nan_frac_max": 0.0,
+    "series_with_nan": 0,
+    "per_series_std_min": 2.3504583862103656,
+    "per_series_std_max": 25.238437667368853,
+    "scale_ratio_max_over_min": 10.737666242226343,
+    "start_field_is_timestamp": "137/137",
+    "start_first": "2006-01-01 00-00-01",
+    "start_last": "2006-01-01 00-00-01",
+    "n_distinct_starts": 1,
+    "starts_on_sampling_grid": true,
+    "start_recovered_from_line": true,
+    "seconds": 1.6
+  },
+  "australian_electricity_demand_dataset": {
+    "n_series": 5,
+    "frequency": "half_hourly",
+    "step_minutes": 30.0,
+    "length": {
+      "min": 230736,
+      "median": 230736.0,
+      "max": 232272,
+      "total": 1155264
+    },
+    "lengths_distinct": 3,
+    "windows_per_series_nonoverlap": {
+      "min": 424,
+      "median": 424.0,
+      "max": 426
+    },
+    "windows_total_nonoverlap": 2122,
+    "nan_frac_mean": 0.0,
+    "nan_frac_max": 0.0,
+    "series_with_nan": 0,
+    "per_series_std_min": 147.32297772974349,
+    "per_series_std_max": 1361.9154008167975,
+    "scale_ratio_max_over_min": 9.24441945040754,
+    "start_field_is_timestamp": "0/5",
+    "start_first": "NSW",
+    "start_last": "TAS",
+    "n_distinct_starts": 5,
+    "starts_on_sampling_grid": true,
+    "start_recovered_from_line": true,
+    "seconds": 0.6
+  },
+  "wind_4_seconds_dataset": {
+    "n_series": 1,
+    "frequency": "4_seconds",
+    "step_minutes": 0.06666666666666667,
+    "length": {
+      "min": 7397147,
+      "median": 7397147.0,
+      "max": 7397147,
+      "total": 7397147
+    },
+    "lengths_distinct": 1,
+    "windows_per_series_nonoverlap": {
+      "min": 13597,
+      "median": 13597.0,
+      "max": 13597
+    },
+    "windows_total_nonoverlap": 13597,
+    "nan_frac_mean": 0.0,
+    "nan_frac_max": 0.0,
+    "series_with_nan": 0,
+    "per_series_std_min": 35.78891585169371,
+    "per_series_std_max": 35.78891585169371,
+    "scale_ratio_max_over_min": 1.0,
+    "start_field_is_timestamp": "1/1",
+    "start_first": "2019-08-01 00-00-03",
+    "start_last": "2019-08-01 00-00-03",
+    "n_distinct_starts": 1,
+    "starts_on_sampling_grid": null,
+    "start_recovered_from_line": true,
+    "seconds": 3.2
+  },
+  "oikolab_weather_dataset": {
+    "n_series": 8,
+    "frequency": "hourly",
+    "step_minutes": 60.0,
+    "length": {
+      "min": 100057,
+      "median": 100057.0,
+      "max": 100057,
+      "total": 800456
+    },
+    "lengths_distinct": 1,
+    "windows_per_series_nonoverlap": {
+      "min": 183,
+      "median": 183.0,
+      "max": 183
+    },
+    "windows_total_nonoverlap": 1464,
+    "nan_frac_mean": 0.0,
+    "nan_frac_max": 0.0,
+    "series_with_nan": 0,
+    "per_series_std_min": 0.15849938841565883,
+    "per_series_std_max": 925.8422159247015,
+    "scale_ratio_max_over_min": 5841.298349345767,
+    "start_field_is_timestamp": "8/8",
+    "start_first": "2010-01-01 00-00-00",
+    "start_last": "2010-01-01 00-00-00",
+    "n_distinct_starts": 1,
+    "starts_on_sampling_grid": true,
+    "start_recovered_from_line": true,
+    "seconds": 0.3
+  }
+}

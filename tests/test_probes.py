@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from fbias.data import b_of, make_mixture
-from fbias.probes import matched_amp, phase_error, retention
+from fbias.probes import delta_k, matched_amp, phase_error, retention
 
 K = 32
 
@@ -36,6 +36,27 @@ def test_retention_and_phase_error():
     shifted = torch.cos(2 * math.pi * b * t / k + 0.3)
     assert retention(shifted, true[0], b, k).item() == pytest.approx(1.0, rel=1e-12)
     assert phase_error(shifted, true[0], b, k).item() == pytest.approx(0.3, rel=1e-12)
+
+
+def test_delta_k_is_amplitude_and_phase():
+    b, k = 4.5, K
+    t = torch.arange(k, dtype=torch.float64)
+    true = torch.cos(2 * math.pi * b * t / k)
+
+    # phase-locked: delta = 1 - r exactly
+    assert delta_k(0.4 * true, true, b, k).item() == pytest.approx(0.6, rel=1e-12)
+
+    # same amplitude, quarter turn: |e^{i pi/2} - 1| = sqrt(2)
+    quad = torch.cos(2 * math.pi * b * t / k + math.pi / 2)
+    assert delta_k(quad, true, b, k).item() == pytest.approx(math.sqrt(2), rel=1e-12)
+
+    # the identity the report relies on, on a random amplitude and phase
+    pred = 0.7 * torch.cos(2 * math.pi * b * t / k + 0.9)
+    r = retention(pred, true, b, k).item()
+    dphi = phase_error(pred, true, b, k).item()
+    assert delta_k(pred, true, b, k).item() == pytest.approx(
+        math.sqrt(1 + r**2 - 2 * r * math.cos(dphi)), rel=1e-12
+    )
 
 
 def test_make_mixture_spacing():

@@ -174,6 +174,68 @@ Both are the model outputting the conditional mean. **So "frequency bias" cannot
 specifying whether the band is signal or noise in the distribution** — a property of the data, not the
 model. This is the clearest single demonstration that the term is doing too much work.
 
+### 2.4 Fredformer, in full: the one forecasting claim, and what it does not specify
+
+This is the only prior work whose setting is *ours* (forecasting, target held out), so it gets its own
+entry. Read against the [v4 HTML](https://arxiv.org/html/2406.09009v4) **including the appendix**,
+because the appendix is where a replication would have come from.
+
+**The claim.** Frequency bias is the model's relative error `Δ_k` being anti-correlated with a
+component's amplitude share `P(ã_k)` (their Def. 2). "Key components" are defined as (i) local spectral
+maxima and (ii) **consistent between history and future and robust to time shifts** — i.e. the
+measurement is restricted by construction to components that are *predictable*. Their remedy is
+architectural: DFT → patch the frequency axis → normalise each sub-band → channel-wise attention within
+a sub-band.
+
+**The evidence.** *Case 1*: synthetic, single channel, 10 000 timestamps, three components `{k1,k2,k3}`,
+PatchTST, 50 epochs — `Δ` ≈ **0.01** at the dominant component against **0.95** at the others, and the
+pattern inverts when the amplitudes are inverted. *Case 2* is **not synthetic**: Appendix A rearranges
+the frequency bins of a real dataset, arguing that this "preserves the inherent noise and instability
+present in the real data".
+
+**What the appendix does not contain** — checked section by section:
+
+| Missing | Consequence for us |
+| :-- | :-- |
+| **Case 1's generator.** Appendix A is titled "Details of the case studies" and documents only Case 2; the repo has no case-study code either | Case 1 **cannot be replicated as specified** — there is nothing to match. It can only be *tested as a claim*, in a setup we specify completely |
+| **`k1,k2,k3` and the sampling rate.** Never given | "Low frequency" is unanchored; it is not even stated that `k1` is the lowest *frequency* rather than the largest *amplitude*, and the two readings are indistinguishable from the text |
+| **The amplitude ratios**, and **whether total power was held fixed** between the two arrangements | Their manipulation may move total power as well as its allocation — exactly the confound our fixed-total-power design removes. They state only that each arrangement is internally consistent between input and target |
+| Model config (patch length, stride, `L`, `H`, lr, batch; 50 epochs is all that is given), the split, and the `Δ_k` averaging convention | No quantitative comparison is possible at the case study's level; only their *metric* carries over |
+
+**Two textual problems, for the record.** §2.2 and §2.2.1 assign `a_k1 < a_k2 < a_k3` to opposite
+subfigures, and only §2.2.1's reading is consistent with its own caption. Separately, Appendix D's
+"improved by approximately 10%" does not match its own quoted numbers (0.343→0.315 is 8.2%;
+0.467→0.449 is 3.9%), and §5.2 points to Appendices D *and* I for the look-back analysis while
+Appendix I contains no look-back extension at all.
+
+**The frequency axis is defined by the tokenizer, and the paper never says so.** In the released code
+the DFT is taken over the whole `L = 96` look-back and patching runs *along the frequency axis* with
+patch length `S`, so band `n` spans `S` bins and `N ≈ L/S`: **changing `S` changes which physical
+frequencies are grouped together and where the low/high boundary falls.** Their own ETT scripts run
+`--patch_len 4 --stride 4` — 24 bands of 4 bins — while the README default implies 6 bands of 16. Their
+ablation varies `S ∈ {8,16,32,None}` and reports only **MSE** (monotone in `S`; the Table-4 digits were
+recovered from a secondary render of the published table and are left out here as provisional), never
+`Δ_k`, so the debiasing claim is never tested against band width; and the stated `N = [6,3,2,1]`
+is inconsistent with `L = 96` (which gives 12, 6, 3, 2 — and no `N = 1` for any listed `S`). Contract 6
+(**report the axis in `cycles/patch`**) is precisely the fix: it is invariant to `L` and `S`, which a
+bin index is not.
+
+**A code-inspection claim, not a paper claim:** in the two files inspected
+(`layers/Fredformer_backbone.py`, `layers/cross_Transformer.py`) the declared
+`nn.LayerNorm(patch_len)` sub-band normaliser is **never called in `forward`**, and the only
+normalisation on the input path is **RevIN** — a global, time-domain instance norm, which is exactly
+what their own Appendix G argues cannot remove inter-band amplitude differences. So the paper's stated
+mechanism may not be in the released model. Not verified beyond those two files.
+
+**What we take from it.** (i) Their variable is the amplitude **share**; ours is conditional
+**predictability**. The two are separable, which is the whole of T1/T2. (ii) Their headline effect is
+**two orders of magnitude larger** than anything we produce under control — `Δ ≈ 0.95` at their weak
+component against `Δ ≈ 1 − 0.958 = 0.04` at our 25× power contrast. With an unknown amplitude ratio and
+50 epochs, a large part of that gap is likely an under-specified corpus and an unconverged one.
+(iii) Their metric **mixes phase** — `Δ_k = |r e^{iΔφ} − 1|` — so it must not be read as retention.
+(iv) **The test they did not run is the one we run next (P8)**: fix total power, move only the
+allocation, sweep far past 25×, rotate which band is the weak one, and read `r` and `Δ_k` together.
+
 ---
 
 ## 3. Our setting, defined precisely
@@ -306,6 +368,22 @@ uniform optimisation gap.** That gap is my own design's fault — perturbing all
 much harder joint objective than one at a time (contract 16) — and it is why the headline quantitative
 result is P2b's, not P3's.
 
+### P8 — the energy account, on its own (designed, not yet run)
+
+Fredformer's stated driver is band **energy** (§2.4). P7 tested power *crossed with* predictability;
+P8 tests power **alone**, in their Case-1 regime: a purely deterministic multi-tone corpus, so the Bayes
+optimum is `r* = 1` at every band and any shortfall is a failure to fit rather than a correct shrink.
+
+| | |
+| :-- | :-- |
+| **Corpus** | Three carriers `b ∈ {2, 4, 8}` — all integer, so `Δφ ≡ 0`, the matched filters are exact and no band can leak into another. No noise, no PM: fully coherent and fully predictable |
+| **Axis** | One band's share of a **fixed total power** (`0.5`, the standing convention); the other two held equal. Ratio `ρ` swept well past their 25×, since their ratio is never stated |
+| **Rotation** | `b = 2, 4, 8` each take a turn as the weak band. This is what separates "power" from "this particular frequency" — the confound P7 could not touch with a fixed target band |
+| **Probe** | Clean, shape-matched to its own arm (contract 9 as sharpened by T2b) |
+| **Readout** | `r` per band (ours) **and** `Δ_k` per band (theirs), plus the oracle on frozen latents |
+| **Pre-registered** | `r ≈ 1` and `Δ_k ≈ 0` at every band, **flat in ρ**. Any deficit must (a) shrink with more steps (contract 2) and (b) *not* follow the rotation. A deficit that tracks whichever band is weak, survives convergence, and is present in the oracle is the energy prior Fredformer claims — and would be the first representation-side power effect we have seen |
+| **Numerical ceiling** | Reported, not corrected: at `ρ ≳ 10⁴` a weak band sits at float32 relative epsilon against the loud one, so a deficit there is a precision artifact, not a model property |
+
 ### The claim, in its final form
 
 > The next-patch map's amplitude contraction at frequency `f` is set by the **conditional
@@ -363,10 +441,93 @@ is the point of T1.
 
 | | What | Cost | What it buys |
 | :-- | :-- | :-- | :-- |
-| **T1** | **Measure the explaining variable**: a corpus's per-band conditional predictability `P(b)`, after phase-folding out clock-locked components. Includes four morphology diagnostics (§6.3) | low, no training | the independent variable of the whole claim; predicted to explain any model's `r_b` |
-| **T2** | Train `SimTFM` on a real corpus, probe clean, check `r_b` against `P(b)` | medium | P2b with a real marginal |
+| **T1** | **Measure the explaining variable**: a corpus's per-band conditional predictability `P(b)`, plus four morphology diagnostics (§6.3) | low, no training | **DONE 2026-09-16** — see the run log |
+
+**T1 outcome, and the three facts T2 must respect** (full detail in `experiments/README.md`):
+
+- **Corpus**: `australian_electricity_demand_dataset`, 30-min resolution, 2 122 non-overlapping
+  windows at `ctx + k = 544`. Chosen over `solar_10_minutes` because the 24 h clock lands inside the
+  band grid (`b = 0.667`), and because solar's 50% of exact zeros makes the phase diagnostics
+  degenerate.
+- **The headline number**: across `b ∈ [0.5, 16]`, **power falls 463× while predictability falls only
+  ~1.25×**. Energy and predictability are demonstrably different objects on real data — the direct
+  real-data counterpart of the Fredformer disagreement (§2).
+- **Morphology confirms §6.3**: clock-locked in the clock band (phase sd 0.27 rad over 13 years),
+  **stationary-like elsewhere** (slip/envelope 0.12–0.14, matching the surrogate). The corpus is *not*
+  PM-like, as required.
+
+1. **A 32-sample patch cannot isolate a band** — high-band "power" is 90%+ leakage from the clock
+   lines. `P(b)` and a model's `r_b` are contaminated *identically* by the same matched filter, so the
+   comparison is valid, but **the aperture must be held fixed** and the leakage reported.
+2. **`P` is an R²; `r` is an amplitude ratio.** They are not the same quantity. For the AR(1)
+   structure the PM instrument produces, `P = r*²`. **Do not equate them in T2.**
+3. **The narrow-band fix is silently degenerate, and it is the θ flaw again.** Band-limiting a
+   544-sample window to 0.5 cycles/patch leaves ~8.5 complex degrees of freedom, so the ridge predicts
+   the 17th coefficient trivially and **white noise reads `P = 0.998`**. Only a null control caught it.
+
+**Resolved 2026-09-16 (T1b).** A `k`-sweep on the same corpus and estimator (k = 32 / 64 / 128) shows
+the flatness is **not an aperture artifact**: `in-band` improves ~4× at matched physical bands, yet
+`P_own` range / max-min on the well-isolated bands is **1.218 / 1.255 / 1.211** — unchanged, and the
+apparent widening over T1's 32 bands sits entirely at the two bands the same arm shows to be
+leakage-dominated. **`k = 32` is safe for T2**; the binding invariant is that `P(b)` and `r_b` go
+through the *same aperture*, not the value of `k`. `k = 64` reads better (`in-band` 1.9–2.6× higher at
+matched bands) at the cost of half the windows; **`k = 128` is unusable** (500 windows/split, 8 context
+patches, no informational gain, apparent structure is leakage). Do not re-read `in-band` across
+apertures — the ±0.5-`b` window is a *relative* width `1/(2b)`, hence a different physical filter at
+each `k`.
+
+**Two corrections this forced.** (i) **The aperture *is* the horizon** — the next patch is the next
+16 h at `k=32` and 64 h at `k=128` — so no arm is a pure aperture manipulation, and **T2 must state its
+forecasting horizon explicitly** (contract 1 in physical units). (ii) The flatness stands and sharpens
+into a testable prediction: **per-band predictability is genuinely nearly flat across a 32× range of
+`b` (periods 32 h → 1 h) while power falls 463×**, so a model trained on this corpus should show
+**nearly flat per-band attenuation**, not a "high frequency is worse" pattern.
+| **T2** | Train `SimTFM` on a real corpus, probe clean, check `r_b` against `P(b)` | medium | **DONE 2026-09-16 — prediction FALSIFIED, with a confound** (run log) |
 | **T3** | **Causal**: manipulate one band's predictability by **per-patch phase randomization** — preserves band power *exactly* — then train and probe | medium | the strongest real-data test; also kills the energy account by construction |
 | **T4** | Audit a released TSFM's per-band retention against `P(b)` of a proxy for its training distribution | medium-high | the blog's "so what" |
+
+**T2 outcome (2026-09-16), resolved by T2b.** Clean-probe `r_b` declined monotonically by **7.9×
+(k32) / 5.8× (k64)** while `P(b)` spans only **1.31×** — the prediction was falsified. The suspected
+confound was that contract A9 is insufficient on a red corpus (a flat probe against a 617×-red corpus
+is out of distribution in **shape**), and **T2b confirmed it is the cause**: flattening the corpus's
+band-power range from 617× to 3.1× removes the decline (**7.89× → 1.12×**, `corr(log2 b, r)` −0.87 →
+−0.30), monotonically across an α = 0.5 dose check (81× → 5.37×), with **arm A reproducing T2
+bit-identically** (worst |Δ| = 3.33e-15). **T2's slope was spectral shape / dynamic range, not
+predictability.**
+
+**The real corpus's band-power correlation was real, but the 2×2 partly retracts the reading.** In the
+one arm where power and predictability are separable, **`corr(r_probe, power) = +0.86` while
+`corr(r_probe, sqrt(P)) = −0.08`** — retention tracked band power, partially rehabilitating
+**Fredformer** (whose stated mechanism is band energy; the only prior work in the forecasting setting,
+though not its premise that the bias is removable by architecture).
+
+**But the decisive test — the promoted 2×2 (P6) — says the effect is narrow and head-side.** A synthetic
+2×2 (target-band relative power ∈ {1×, 5×, 25×} × PM depth β ∈ {0, 1.5}, shape-matched probe, 6 arms ×
+3 seeds) was pre-registered as "orthogonal if `r/r* ≈ 1` everywhere". At 2 000 steps it read INTERACTION
+with four of six cells off — **but contract A2 broke that reading**: at 10 000 steps
+`q = r/r*` is **0.999 / 1.017 / 0.991 / 0.952 / 0.958 / 0.438**, i.e. **five of six cells sit at their
+optimum**, the β=0 collapse having been under-training (+0.42 on both low-power rows). The lone
+exception is the **joint extreme** (25×, β=1.5), which is at **99.8% of its Bayes bound** while
+withholding a band carrying 2% of the corpus power, and is still rising. **A ridge on the frozen latents
+reads `r*` in all six cells, flat in power** — so the residual is **head-side optimisation, not a prior
+about power**. The two axes are therefore **largely orthogonal**, and T2b's real-corpus power slope is
+**not** reproduced at controlled range (T2b's own flat arm, range 3.11×, agrees: decline only 1.12×).
+This is the **third** time contract A2 has rescued a result from being misread.
+
+**What survives T2 regardless.** The fit gate passes with a huge margin (`+0.916` / `+0.877` against
+persistence `−0.90` / `−1.00` and a mean predictor `+0.15` / `+0.13`), so **a 32-hidden 2-layer model
+does fit this real corpus**. `r ≈ sqrt(P)` is now **measured**, not assumed (`r_ms/√P_own` = 0.998 /
+0.994, pooled-RMS convention). The decline is **not** a head-only gap of P3's kind — the oracle declines
+too. And a **band-flat deficit survives** the flattening: `r/sqrt(P)` ∈ **[0.45, 0.80]** at k32 with
+**no band trend**, a uniform ~1.5–2.2× under-retention that **neither account explains**. Only the
+*slope* was ever a frequency claim.
+
+**Two design consequences.** (i) **T3 must flatten the corpus too** — per-patch phase randomisation
+preserves band power exactly but does not remove the shape confound, since a red corpus stays red.
+(ii) **`spread_b / seed sd` is not a flatness statistic** — arm B reports a *larger* ratio than T2
+(22.5 vs 18.3) while its decline is 1.12×, because its seed sd fell 4×. Report `spread_b` and
+`corr(log2 b, r)`; P3's conclusion is unaffected (its `corr` values carried it), but the ratio must not
+be quoted alone.
 
 **Anti-Monash-checkpoint note.** Reusing the lab's Monash checkpoints is not possible (different model
 class). **Real-data work must use a single corpus**, which is better anyway: it permits a fine
@@ -490,6 +651,11 @@ Confounds the lab paid dozens of iterations to learn. Requirements, not suggesti
     time** — eight simultaneous phase walks are a much harder joint objective, and in P3 the head fell
     uniformly to `r/r*` = 0.48–0.87 with a 6% ceiling loss even at β=0, while the same architecture
     perturbing one band at a time read `r = r*` within 0.03 (P2b). The oracle is what caught it.
+17. **`Δ_k` is not an amplitude metric.** It is `|r e^{iΔφ} − 1|`, so it carries the phase error too.
+    Report `r` as the primary reading with `Δ_k` beside it, never `Δ_k` on its own.
+18. **Do not let the tokenizer define the frequency axis.** `b` is `cycles/patch` (contract 6); patch
+    width and look-back are separate knobs, and a claim about "low vs high frequency" must be
+    invariant to both. This is exactly the invariance Fredformer's bin index lacks (§2.4).
 
 ## Appendix B — variables and metrics
 
@@ -511,6 +677,7 @@ clean corpus the two definitions coincide. (This does **not** fix scale mismatch
 | :-- | :-- |
 | **retention** `r_f` | Fixed forecast position, `\|Z(pred, b)\| / \|Z(clean target, b)\|` |
 | **phase error** | `angle(Z(pred, b)) − angle(Z(clean target, b))`, unwrapped |
+| **relative error** `Δ_b` | `\|Z(pred, b) − Z(clean target, b)\| / \|Z(clean target, b)\|` — Fredformer's metric, `= \|r e^{iΔφ} − 1\|`. Amplitude **and** phase: `Δ ≥ \|1 − r\|`, with equality exactly when the emitted phase is locked |
 | **ring** `dim1+2` | Per `f`, PCA of the phase-loop latents; variance fraction of the top two components |
 | **plane overlap** | Grassmann `mean(cos²)` between two frequencies' top-2 subspaces. 1 = identical, 0 = orthogonal, 0.5 = sharing one direction |
 | **transient metric** | the `r_f(t)` curve, and steps to reach a threshold `ε` (implemented in P3) |

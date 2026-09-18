@@ -30,6 +30,19 @@ def phase_error(pred, true, b, k):
     return torch.angle(matched_amp(pred, b, k)) - torch.angle(matched_amp(true, b, k))
 
 
+def delta_k(pred, true, b, k):
+    r"""Fredformer's relative error, ``|Z(pred) - Z(true)| / |Z(true)|``, ``(...,)``.
+
+    Piao et al. 2024, eq. 1-2, read through our patch-level matched filter. It
+    is ``|r e^{i dphi} - 1|``, so it is *not* amplitude-only: by the triangle
+    inequality ``delta >= |1 - r|``, with equality exactly when the emitted
+    phase is locked. Reported next to ``r`` so their figures can be converted;
+    ``r`` stays the primary reading because only it is amplitude.
+    """
+    z_true = matched_amp(true, b, k)
+    return (matched_amp(pred, b, k) - z_true).abs() / z_true.abs()
+
+
 def band_component(x, b, k):
     r"""The part of ``x`` in band ``b``, ``(..., k)``: ``Re(Z e^{2j pi b t / k})``."""
     z = matched_amp(x, b, k)
