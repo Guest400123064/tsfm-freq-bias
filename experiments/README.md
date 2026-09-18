@@ -1806,3 +1806,43 @@ at every checkpoint; the first run did not record it.
 The first render had 8 of 11 figures clipping text (`context="talk"` fonts on fixed-width
 canvases); fixed by `context="notebook"` + `bbox_inches="tight"` on every save, and the 15-way
 band labels on the curve plots reduced to b1/b5/b9/b13/b15 (37 overlapping label pairs → 0).
+
+## 2026-09-17 — P14 Δk rerun and the figure set
+
+The first P14 run recorded `r`, `r_oracle` and `var_explained` at each checkpoint but **not**
+Fredformer's `Δk`, which the figure set needs. `delta_k` is now computed in the checkpoint
+evaluator and the run was repeated (`mixed_dynamics_s20k_dk.json`).
+
+**The rerun reproduces the first run exactly** — worst `|Δr|` between the two over all
+seeds × bands × checkpoints is **0.0** (bit-identical training, same seeds and config), so the
+Δk curves carry the same trajectory as the retention curves rather than a second sample of it.
+
+```
+Δk at step 1k    b1 0.14   ->  b15 0.68
+Δk at step 20k   b1 0.073  ->  b15 0.245
+```
+
+i.e. the same ordering as retention, expressed in Fredformer's units: the weak band starts ~5×
+worse and ends ~3.4× worse, and every band improves by roughly the same factor.
+
+**Figures.** `scripts/make_figures.py` writes 13 PNGs to `experiments/7_mixed_dynamics/figures/`:
+the dynamics set (`p14_heatmap_r`, `p14_heatmap_dk`, `p14_curves`, `p14_curves_dk`,
+`p14_collapse`, `p14_t80_share`, `p14_early_share_vs_r`, `p14_oracle`, `p14_scaling_law`), the
+cross-experiment `p13_share_vs_r`, and the setup trio (`setup_bands`, `setup_shapes`,
+`setup_phase`).
+
+Three defects found by an independent visual pass and fixed, in order of how much they mattered:
+
+1. **8 of 11 figures clipped their titles** — `context="talk"` fonts on fixed-width canvases.
+   Fixed with `context="notebook"` + `bbox_inches="tight"` on every save.
+2. **A patch that did not apply**: the band-label subset (b1/b5/b9/b13/b15 instead of all 15, to
+   kill 37 overlapping label pairs) silently missed its target string, so the shipped figures still
+   carried 15 labels. Re-applied against the actual file text and verified by rendering.
+3. **The Δk heatmap was built from the wrong run** and the `r` heatmap showed the same panel twice
+   (the two runs' retention is bit-identical). Both fixed: each field is now drawn from the run that
+   actually recorded it, single panel, with colour limits hugging the data (retention 0.64–0.99,
+   Δk 0.07–0.68) instead of the previous 0–1 / 0–1.1.
+
+The visual check was done by a subagent with image access, twice — once to find the defects, once to
+confirm the fixes — because the code author cannot see the PNGs. Both rounds reported the on-disk
+files as pixel-identical to the current script's output.

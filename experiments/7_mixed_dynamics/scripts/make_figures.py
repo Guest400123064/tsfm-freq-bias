@@ -42,9 +42,22 @@ def key(prefix, b):
     return f"{prefix}@{float(b)}"
 
 
+def rec_with(recs, field):
+    r"""First run that actually recorded ``field`` (the dk rerun, for instance)."""
+    for r in recs:
+        _, _, _, curves = series(r, field)
+        if not all(math.isnan(v) for c in curves.values() for v in c):
+            return r
+    return recs[0]
+
+
 def load(p14_tag="s20k", p13_tag="s10k"):
     runs = [p for p in sorted(P14_RUNS.glob(f"mixed_dynamics_{p14_tag}*.json"))]
-    p14 = [json.loads(p.read_text()) for p in runs]
+    p14 = []
+    for p in runs:
+        rec = json.loads(p.read_text())
+        rec["config"]["run_tag"] = p.stem.replace("mixed_dynamics_", "")
+        p14.append(rec)
     p13_path = P13_RUNS / f"free_shape_{p13_tag}.json"
     p13 = json.loads(p13_path.read_text()) if p13_path.exists() else None
     return p14, p13
@@ -166,37 +179,33 @@ def matrix(rec, field):
     return np.array([curves[b] for b in bands]), bands, steps, shares
 
 
-def fig_heatmaps(recs):
-    for field, fname, label, cmap in (
-        ("r", "p14_heatmap_r.png", "retention $r$", "viridis"),
-        ("dk", "p14_heatmap_dk.png", r"Fredformer $\Delta_k$", "magma_r"),
-    ):
-        panels = [(r, matrix(r, field)[0]) for r in recs]
-        panels = [(r, m) for r, m in panels if not np.isnan(m).all()]
-        if not panels:
-            continue
-        fig, axes = plt.subplots(
-            1, len(panels), figsize=(5.6 * len(panels), 5.2), squeeze=False
-        )
-        for ax, (rec, m) in zip(axes[0], panels):
-            sns.heatmap(
-                m,
-                ax=ax,
-                cmap=cmap,
-                vmin=0,
-                vmax=1 if field == "r" else 1.1,
-                xticklabels=[f"{s // 1000}k" for s in matrix(rec, field)[2]],
-                yticklabels=[f"b{int(b)}" for b in matrix(rec, field)[1]],
-                cbar_kws={"label": label},
-            )
-            ax.set_xlabel("SGD step")
-            ax.set_title(
-                f"{label} by band -- {rec['config']['tag_label']}", fontsize=10
-            )
-            ax.tick_params(axis="both", labelsize=7)
-        fig.tight_layout()
-        fig.savefig(OUT / fname, dpi=150, bbox_inches="tight")
-        plt.close(fig)
+def fig_heatmap(rec, field, fname, label, cmap):
+    r"""One panel: the colour limits hug the data so the structure is visible."""
+    m, bands, steps = (
+        matrix(rec, field)[0],
+        matrix(rec, field)[1],
+        matrix(rec, field)[2],
+    )
+    if np.isnan(m).all():
+        print(f"  skip {fname}: no {field} recorded in any run")
+        return
+    fig, ax = plt.subplots(figsize=(6.4, 5.2))
+    sns.heatmap(
+        m,
+        ax=ax,
+        cmap=cmap,
+        vmin=float(np.nanmin(m)),
+        vmax=float(np.nanmax(m)),
+        xticklabels=[f"{s // 1000}k" for s in steps],
+        yticklabels=[f"b{int(b)}" for b in bands],
+        cbar_kws={"label": label},
+    )
+    ax.set_xlabel("SGD step")
+    ax.set_title(f"{label} by band -- run {rec['config']['run_tag']}", fontsize=10)
+    ax.tick_params(axis="both", labelsize=7)
+    fig.tight_layout()
+    fig.savefig(OUT / fname, dpi=150, bbox_inches="tight")
+    plt.close(fig)
 
 
 def fig_curves(rec, field="r", fname="p14_curves.png"):
@@ -225,7 +234,9 @@ def fig_curves(rec, field="r", fname="p14_curves.png"):
     fig.colorbar(sm, ax=ax, label="band's share of the loss")
     ax.set_xlabel("SGD step")
     ax.set_ylabel(r"retention $r$" if field == "r" else r"$\Delta_k$")
-    ax.set_title("per-band learning curves, coloured by the band's power share")
+    ax.set_title(
+        f"per-band learning curves: {ax.get_ylabel()}, coloured by power share"
+    )
     fig.tight_layout()
     fig.savefig(OUT / fname, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -485,17 +496,24 @@ def main(argv=None):
     OUT.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid", context="notebook")
     recs, p13 = load(args.p14_tag, args.p13_tag)
-    for r in recs:
-        r["config"]["tag_label"] = "P14 (mixed corpus)"
     print(f"loaded {len(recs)} P14 run(s), P13 {'yes' if p13 else 'no'}")
 
     primary = recs[0]
     fig_setup_bands(primary, p13)
     fig_setup_shapes(primary, p13)
     fig_setup_phase(primary)
-    fig_heatmaps(recs)
+    fig_heatmap(
+        rec_with(recs, "r"), "r", "p14_heatmap_r.png", "retention $r$", "viridis"
+    )
+    fig_heatmap(
+        rec_with(recs, "dk"),
+        "dk",
+        "p14_heatmap_dk.png",
+        r"Fredformer $\Delta_k$",
+        "magma_r",
+    )
     fig_curves(primary, "r", "p14_curves.png")
-    fig_curves(primary, "dk", "p14_curves_dk.png")
+    fig_curves(rec_with(recs, "dk"), "dk", "p14_curves_dk.png")
     fig_collapse(primary)
     fig_t80(primary)
     fig_early(primary)
