@@ -1988,3 +1988,192 @@ clipping, with the cell grids reconstructed against the run JSON (max abs error 
 
 That is the fourth silent failure of this kind in the session — the others were string replacements
 that missed their anchor. This one at least produced a visible artefact that the check could catch.
+
+### Correction: the exponent is ≈ 1/share, and the earlier "1/amplitude" reading was a censoring artifact
+
+The P14 entry reports `t80 ∝ share^(−0.55)` and reads it as "1/amplitude", matching the derivation that
+a band's gradient scales with its amplitude. **That reading was wrong**, and the error has the same
+cause as the ordering failure: P14's run has **4 of its 15 bands clipped at the `t80` floor** (b1–b4
+all read exactly 1 000, their true value being below the sampling grid). Clipping the fast end makes
+the fitted slope shallower, so the regression saw 0.55 where the data say ≈ 1.
+
+The uncensored numbers, from the fine-grid bimodal run (2 of 15 bands floored):
+
+```
+run                                    OLS beta   floored bands   u80 = t80 x share
+P14 red, coarse                        0.55       4/15            —
+P15 bimodal, coarse                    0.92       8/15            —
+P15 bimodal, fine                      1.12       2/15            1.33x spread at beta = 1.12
+P15 bimodal, fine, middle bands only   1.07       0/11            —
+```
+
+So **`t80 ∝ share^(−1.1) ≈ 1/power`** — the plain expectation that a band's learning time scales with
+its share of the loss — and not 1/amplitude. The u80 spread confirms the exponent from the other
+direction: 3.41× at β = 0.5, 1.59× at β = 1.0, 1.33× at β = 1.12.
+
+The lesson is the same one this project keeps re-learning: **a clipped measurement is worse than a
+missing one**, because it still fits a straight line. Every `t80` in this section is quantised by the
+checkpoint grid, and the bands that reach the threshold early are the ones whose value is censored —
+so any statistic built on `t80` must be computed on a grid fine enough to resolve the fastest band, or
+not at all. The `--ckpt-fine` knob exists for that reason.
+
+## 2026-09-19 — P16 2 000-step leg: carrier invariance holds; the one violation is the noisiest cell
+
+```
+1. oracle minimum over significant sidebands   0.9725 ... 0.9971                PASS
+2. carrier invariance (primary)   worst |dr| = 0.0643 (tol 0.05)                FAIL
+                                  worst |d(dk)| = 0.0655 (tol 0.08)             PASS
+3. share ordering (pooled)        Spearman(log share, deficit) = -0.893         PASS
+-> auto-verdict (max-over-cells): "the band's position matters beyond its share"
+```
+
+**The β = 1 profile, in the carrier frame** — the whole experiment in five rows:
+
+```
+              n=-2      n=-1      n=+0      n=+1      n=+2
+  share       0.0132    0.1936    0.5855    0.1936    0.0132
+  b6 arm      0.4544    0.9894    0.9984    0.9874    0.5018
+  b10 arm     0.5187    0.9913    0.9993    0.9956    0.4798
+  diff       -0.0643   -0.0019   -0.0009   -0.0082   +0.0220
+```
+
+Four of five cells agree to ≤ 0.022. The single violation sits on the **weakest line** (1.3% share),
+and it is the same size as that line's **within-arm** spread — in the b6 arm its own ±2 pair reads
+0.454 against 0.502 (0.048 apart) and in the b10 arm 0.519 against 0.480 (0.039 apart). Its sign is
+also inconsistent between the two ±2 cells (−0.064 and +0.022), so it is not a monotone band-index
+trend. The cleanest available control — **the same band at the same share in both arms** — passes:
+
+```
+  band 8, beta 1.0 :  0.5018±0.0761 (b6 arm)  vs  0.5187±0.0865 (b10 arm)   diff -0.017
+  band 8, beta 1.5 :  0.8866±0.0329           vs  0.9066±0.0251             diff -0.020
+```
+
+**A pre-registration lesson, recorded before the 10k leg.** The primary criterion is the *maximum
+over cells of a 3-seed mean*, which at a 1.3%-share line is dominated by seed noise: the two arms'
+seed lists there are 0.504/0.470/0.389 against 0.449/0.491/0.616 — overlapping. A criterion
+normalised by the seed sd (or applied to the pooled deviation, or to the same-band control) would
+have been the right form. The 10k verdict will be reported as pre-registered **and** with the
+per-cell sd and the same-band control beside it; the criterion itself is not being changed.
+
+**The corpus reproduces P8's schedule law quantitatively**, which is a worthwhile cross-check of the
+energy branch in a completely different constructor: at 2 000 steps this PM corpus reads
+
+```
+  share 0.0132 -> r ~ 0.50        (P8, share 2%   -> 0.51)
+  share 0.1936 -> r ~ 0.99        (P8, share 9%   -> 0.96)
+  share 0.5855 -> r ~ 0.999       (P8, share 33%  -> 0.996)
+```
+
+**And Δk shows no independent phase failure**: it tracks the amplitude deficit (0.60 at the weakest
+line, 0.03–0.06 at the strong ones) rather than exposing a model that fits every line's amplitude
+but scrambles the chirp's relative phases. At 2 000 steps the new observable is consistent with the
+old story; whether that survives convergence is the 10k leg's question.
+
+## 2026-09-19 — P16 10 000-step leg: **carrier-invariant** — no frequency-position effect
+
+```
+1. oracle minimum over significant sidebands   0.9816 ... 0.9972                 PASS
+2. carrier invariance (primary)   worst |dr| = 0.0080 (tol 0.05)                 PASS
+                                  worst |d(dk)| = 0.0360 (tol 0.08)              PASS
+3. share ordering (pooled)        Spearman(log share, deficit) = -0.769          marginal FAIL
+-> auto-verdict: "carrier-invariant but not share-ordered"
+```
+
+**Check 2 is the experiment, and it passes by an order of magnitude.** At every β and every matched
+line, the two carriers differ by **|Δr| ≤ 0.008** and **|Δ(Δk)| ≤ 0.036**:
+
+```
+beta 1.0    dr[n=-2:+0.008 n=-1:+0.001 n=+0 n=0.001 n=+1:-0.003 n=+2:-0.006]
+beta 1.5    dr[n=-2:+0.007 n=-1:-0.001 n=+0:-0.001 n=+1:-0.002 n=+2:-0.005]
+beta 2.405  dr[n=-3:-0.003 n=-2:+0.001 n=-1:+0.000 n=+1:-0.002 n=+2:-0.002 n=+3:+0.006]
+```
+
+So the 2 000-step "violation" (0.0643, at the weakest line) was convergence noise, as its own
+within-arm spread suggested; at convergence the same cells agree to 0.008. **Conclusion: the model's
+per-line behaviour does not care where in the spectrum a line sits**, given its share — translation
+invariance in band index, over b3–b13, at three modulation depths. This is the first experiment in
+the project that asks the position question directly, and the answer is a clean null.
+
+**Check 3 fails on saturation, not on the data.**
+
+```
+        points   Spearman   deficit range        exact ties
+2k        32      -0.893    0.0007 - 0.5456         0
+10k       32      -0.769   -0.0014 - 0.0696         6
+```
+
+At 10 000 steps every significant line is essentially learned (deficit inside 0.07, against 0.55 at
+2 000), so the ordering signal has shrunk by 8× and contains exact ties — a rank correlation over a
+saturated quantity measures noise. The criterion is inherently a **transient** one (the schedule law
+is about speed; at convergence everything tends to r = 1), and at the budget where it has dynamic
+range it passes (−0.893). **This is the third time a criterion has been misapplied by saturation or
+censoring rather than by the data** (P15's t80 floor, P12's α=2 plateau, now this) — a pattern worth
+naming: the statistics in this project are mostly *transient* statistics, and each one needs a
+stated budget window.
+
+**Δk again shows no independent phase failure**: it tracks the amplitude deficit (0.12–0.13 at the
+1.3%-share lines against 0.013–0.027 at the strong ones), and the phase errors are ≤ 0.07 rad. The
+model reproduces the chirp's relative phases, not merely its per-line amplitudes.
+
+**Schedule law cross-check.** The PM corpus — a different constructor from every previous run —
+reproduces P8's share-vs-retention relation at 2 000 steps: share 0.0132 → r ≈ 0.50 (P8: 2% → 0.51),
+0.1936 → 0.99 (P8: 9% → 0.96), 0.5855 → 0.999 (P8: 33% → 0.996).
+
+**Where this leaves the predictability branch.** The rank axis is untouched (this run held rank at 1
+by fixing the modulator's phase), and the natural next step is the one step that changes rank
+without changing the marginal spectrum at all: the same single-tone modulator with a **random phase
+per window** — state (τ, φ), rank 2, sideband shares bit-identical.
+
+## 2026-09-19 — P17: **no rank effect** — dimension does not enter either
+
+```
+A. design      share error vs J_n^2 = 0.000000; cross-arm spread = 0.000000    PASS
+B. capacity    oracle 0.9932 ... 0.9993                                        PASS
+C. convergence final min r 0.9881 ... 0.9949 (every significant line, 8 arms)  PASS
+D. rank effect t80(K)/t80(K=1), worst = 1.143 (threshold 1.25)                 ABSENT
+E. interaction |log2 effect(b6) - log2 effect(b10)|, worst = 0.193 (thr 0.322)  within tolerance
+-> "no rank effect: identical dynamics at rank 1 and rank 2"
+```
+
+**The rank knob is exact, and it does nothing.** The design's premise is verified to the digit —
+`φ` per window changes the sidebands' relative phases and leaves every power untouched (share error
+**0.000000**, cross-arm spread **0.000000**) — and the four phase ladders then behave identically.
+The carrier line of the four b6 arms, step by step:
+
+```
+step      phiK1    phiK2    phiK4    phiInf
+   100    0.597    0.601    0.597    0.604
+   500    0.890    0.887    0.892    0.896
+  1000    0.968    0.964    0.971    0.970
+  2000    0.992    0.989    0.996    0.992
+ 10000    0.999    1.000    1.002    1.001
+```
+
+Four different state-space dimensions, one curve. The weakest line (share .054, `r@b4`) shows the
+largest deviation and it is ~0.04 at 1 000–2 000 steps and ~0.008 at convergence — **and it does not
+order monotonically in K** (`K1 ≈ K2 > K4 ≈ Inf`, i.e. a two-way split rather than a ladder), which
+is what noise looks like rather than a cost that grows with dimension.
+
+**Check F resolves as the "pure dynamics" branch**: D is absent *and* C holds, so there is not even a
+time constant to report — the endpoint and the trajectory are both rank-independent.
+
+**Recorded limitation.** `train_seeds` stores the seed-mean trajectory only, so the seed sd of the
+t80 ratios cannot be computed after the fact; the pre-registered threshold was applied as written
+(1.143 < 1.25), but I cannot say how far the 1.143 sits from the seed noise. The next dynamic
+experiment should keep per-seed marks — that is a design lesson, not a doubt about the verdict
+(the convergence values span 0.988–0.995 with no ordering by K, which is the stronger evidence).
+
+**Where the predictability branch now stands.** Three axes have been crossed against the same
+constructor, each with the algebra held exactly fixed:
+
+| axis | manipulation | result |
+| :-- | :-- | :-- |
+| **position** | carrier b6 vs b10, shares identical in the carrier frame | \|Δr\| ≤ **0.008** (P16) |
+| **dimension** | φ fixed / 2 / 4 / continuous, shares bit-identical | t80 ratio ≤ **1.143**, all arms converge ≥ 0.988 (P17) |
+| **predictability** | per-patch phase-walk depth β, constant envelope | `r → r* = exp(−β²σ²/2)`, the Bayes optimum (P2b) |
+
+So of {share, position, dimension, predictability}, **only share and predictability enter the
+model's behaviour — and they enter in different roles**: share sets the learning *schedule* (P8, P14,
+P15, and now reproduced on a third constructor: the PM corpus's r-versus-share at 2 000 steps matches
+P8's relation), and predictability sets the *fixed point*. Position and dimension, which the
+literature's "frequency bias" would predict to matter, do not.
