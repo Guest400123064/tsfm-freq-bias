@@ -155,45 +155,31 @@ def make_banded(freqs, bands, thetas, n_per, ctx, k, seed):
     return x + incoherent, incoherent
 
 
-def make_pm(freqs, betas, n_per, ctx, k, seed):
-    r"""Tones whose per-patch phase diffuses, ``(n_per, ctx + k)``.
+def make_pm_profile(freqs, powers, betas, n_per, ctx, k, seed):
+    r"""Phase-diffusing tones with a per-tone power, ``(n_per, ctx + k)``.
 
-    Every frequency is a tone of amplitude ``1 / sqrt(len(freqs))``, so the
-    total power is ``0.5``, the same as ``make_mixture(..., normalize=True)``
-    (PLAN.md §3.9). The envelope is constant, so total power does not depend on
-    ``betas`` at all.
+    ``make_pm`` with the flat power replaced by ``powers[j]``, the mean square
+    of tone ``j``. The envelope is constant, so the window's total power is
+    ``sum(powers)`` however the ``betas`` are set -- power and predictability
+    are separate knobs. Everything else is ``make_pm``: the phase advances by
+    the carrier ``2 pi b_c`` plus ``beta_j * eps`` per patch boundary, so the
+    conditional mean of the next patch shrinks the tone by
+    ``exp(-beta_j**2 / 2)`` and the fraction of tone ``j``'s power any function
+    of the context can recover is ``exp(-beta_j**2)`` (PLAN.md §5, P2b).
 
-    The phase is held within a patch and advances by the carrier plus a random
-    step at every patch boundary. ``phi_p`` is the phase at the patch's first
-    sample, where ``u`` runs ``0 .. k-1`` over the patch::
-
-        x_p[u] = A cos(2 pi b_c u / k + phi_p)
-        phi_p  = phi_{p-1} + 2 pi b_c + beta_p * eps_p ,   eps_p ~ N(0, 1)
-
-    ``eps_p`` is drawn independently per patch, per tone, per window, so the
-    next patch's phase is genuinely not a function of the context -- unlike
-    ``make_banded``'s incoherent energy, which the window's own FFT bins
-    determine (PLAN.md §4). The previous patch's phase is readable and the
-    advance ``2 pi b_c`` is known, so the conditional mean of the next patch is
-    the tone shrunk by ``E[e^{i beta eps}] = exp(-beta**2 / 2)``, the
-    closed-form optimum of PLAN.md §5's P2b. ``betas`` all zero advances the
-    phase deterministically and is ``make_mixture(..., normalize=True)``
-    distributionally.
-
-    Returns ``(observed, unpredictable)``, where ``unpredictable`` is each
-    sample minus its conditional mean given the previous patch -- the part no
-    function of the context can know. Its mean square per tone is
-    ``(1 - exp(-beta**2)) / (2 len(freqs))``, against a target variance of
-    ``0.5``. Patch 0 has no previous patch and keeps the same formula, which
-    leaves the mean square -- its only use -- untouched.
+    Returns ``(observed, unpredictable)`` with ``unpredictable`` the part of
+    each sample no function of the context can know; its mean square on tone
+    ``j`` is ``powers[j] * (1 - exp(-beta_j**2))``.
     """
     freqs = torch.as_tensor(freqs, dtype=torch.float32).flatten()
+    powers = torch.as_tensor(powers, dtype=torch.float32).flatten()
     betas = torch.as_tensor(betas, dtype=torch.float32).flatten()
-    assert betas.numel() == freqs.numel()
+    assert powers.numel() == freqs.numel(), "one power per tone"
+    assert betas.numel() == freqs.numel(), "one beta per tone"
     assert (ctx + k) % k == 0, f"{ctx + k} samples is not a whole number of patches"
     n, f = int(n_per), freqs.numel()
     n_patch = (ctx + k) // k
-    amp = math.sqrt(1 / f)
+    amp = (2 * powers).sqrt().view(1, 1, f)
 
     gen = torch.Generator().manual_seed(seed)
     step = betas.view(1, 1, f) * torch.randn((n, n_patch, f), generator=gen)
@@ -212,9 +198,29 @@ def make_pm(freqs, betas, n_per, ctx, k, seed):
         arg = 2 * math.pi * float(f_j) * u / ctx  # within a patch; phi adds 2 pi b
         full = torch.cos(arg + phi[:, idx, j])
         mean = shrink[0, 0, j] * torch.cos(arg + psi[:, idx, j])
-        x += amp * full
-        unpredictable += amp * (full - mean)
+        x += amp[0, 0, j] * full
+        unpredictable += amp[0, 0, j] * (full - mean)
     return x, unpredictable
+
+
+def make_pm(freqs, betas, n_per, ctx, k, seed):
+    r"""Tones whose per-patch phase diffuses, ``(n_per, ctx + k)``.
+
+    ``make_pm_profile`` with flat power: every frequency is a tone of mean
+    square ``0.5 / len(freqs)``, so the total power is ``0.5``, the same as
+    ``make_mixture(..., normalize=True)`` (PLAN.md §3.9), and is independent of
+    ``betas``.
+
+    ``eps_p`` is drawn independently per patch, per tone, per window, so the
+    next patch's phase is genuinely not a function of the context -- unlike
+    ``make_banded``'s incoherent energy, which the window's own FFT bins
+    determine (PLAN.md §4). ``betas`` all zero advances the phase
+    deterministically and is ``make_mixture(..., normalize=True)``
+    distributionally.
+    """
+    freqs = torch.as_tensor(freqs, dtype=torch.float32).flatten()
+    powers = torch.full((freqs.numel(),), 0.5 / freqs.numel())
+    return make_pm_profile(freqs, powers, betas, n_per, ctx, k, seed)
 
 
 def make_broad(

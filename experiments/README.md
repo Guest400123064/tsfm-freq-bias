@@ -2177,3 +2177,529 @@ model's behaviour — and they enter in different roles**: share sets the learni
 P15, and now reproduced on a third constructor: the PM corpus's r-versus-share at 2 000 steps matches
 P8's relation), and predictability sets the *fixed point*. Position and dimension, which the
 literature's "frequency bias" would predict to matter, do not.
+
+## 2026-09-19 — T5 step 1: profiling the real corpus under per-context-window normalization
+
+Script `experiments/10_real_profile/scripts/profile.py` (imports T1's estimator verbatim via
+`importlib`; writes `runs/profile.json`). Corpus: `australian_electricity_demand_dataset`, 5 series,
+1 155 264 samples, 30-min steps, **2 122 non-overlapping windows** at `ctx + k = 544`.
+
+**Normalization under test** (what the model will see): per window, statistics from the **context
+only** — `mu = mean(context)`, `sigma = std(context)`, applied to the whole window — with the loss
+computed in that space and nothing denormalized. Context-only is the point: taking the statistics
+over `ctx + k` would put part of the target's own amplitude into its normalization.
+
+### Finding 1 — the band grid must be integer; at 0.5 spacing half the bands are interpolation
+
+At k = 32 with T1's 0.5-spaced grid, `in-band` alternates **1.000 / 0.38 / 1.000 / 0.29 / 1.000 /
+0.24 …**: an integer band has a DFT bin of its own, while a half-integer band has none, so its entire
+matched-filter reading is leakage from its neighbours (0.09–0.38 of it survives band-limiting). With
+`grid = "phys"` (integer bands at each aperture) **`in-band` is 1.000 at every band of both k = 32 and
+k = 64**. So: *integer bands only* — a half-integer "power at b" is not a well-defined quantity to
+intervene on. (This also explains why T1's `in-band` column ranged 0.047–0.962: its grid was
+half interleaved, and its series-level band-limiting is a stricter reading than the per-window one
+used here — the per-window version is the one that matches what the model's patch embedding sees.)
+
+### Finding 2 — the measurable range is bounded above
+
+```
+k = 64, grid = phys     power range 1664x, floor (p10) 3.0e-4
+                        bands within 3x of the floor: b = 13 ... 32
+k = 32, grid = phys     power range  ~830x (same physical bands)
+```
+
+So periods shorter than ≈ 2.7 h (b ≥ 13 at k = 64) sit at the measurement floor. **The intervention
+can only be evaluated on periods from 32 h down to ≈ 2.7 h**, and any claim about faster bands would
+be a claim about the floor.
+
+### Finding 3 — power and predictability separate, and the null control is clean
+
+`P_own` spans **0.63–0.92** (1.5×) while band power spans **1664×** — T1's headline reproduced on the
+per-window-normalized corpus, so the normalization did not erase the separation it is meant to
+isolate. The estimator's null (white noise pushed through the *same* normalization) reads
+**≈ 0.000** at every band, so this configuration is well-posed — unlike T1's degenerate narrow-band
+variant, which read 0.998 on white noise and needed a null control to catch it.
+
+### Finding 4 — the profile's shape is stable, its levels are not
+
+Split-half (first vs second half of the windows): rank correlation of the per-band power
+**+0.98**, of `in-band` **+0.63**, but the **median |relative difference| in power is 0.26**. So the
+corpus's spectral *shape* is highly reproducible while its per-band *levels* drift by ~a quarter
+between halves. Any target profile should be defined on the whole corpus, with that drift reported
+rather than smoothed away.
+
+### What this changes for the intervention
+
+- target **integer bands** with periods **2.7–32 h** — the intersection of "measurable" and "above the
+  floor";
+- the marginal to balance toward is a **whole-corpus** statistic, and the split-half drift (±26 % in
+  level) is the noise floor on how precisely "balanced" can even be defined;
+- the null control is clean, so `P(b)` can be used directly as the "capturable" criterion.
+
+**Still to come (needs a trained model)**: the fit gate and MASE < 1 baseline with its seasonal-naive
+denominator, the per-band oracle, the per-band MSE decomposition and the resulting **headroom** — the
+number that decides whether this intervention is worth running at all.
+
+### Correction to the T5 profiling entry: the "floor" and the grid
+
+Two claims in the entry above are wrong, both from a single mistake.
+
+**`grid = "phys"` does not give integer bands at k = 32.** The option scales T1's 0.5-spaced grid by
+`k/32`, so at k = 32 it returns the *same* half-integer grid as `"t1"` — only the k = 64 arm happened
+to land on integers (b = 1…32). So the statement "`in-band` is 1.000 at every band of both apertures"
+is false as written: at k = 32 the half-integer bands still carry `in-band` 0.09–0.90.
+
+**The "power floor" was therefore contaminated.** Bands within 3× of the 10th percentile included the
+half-integer bands, whose power is near zero *by construction* (they are interpolation between DFT
+bins), which dragged the floor statistic down and made the integer bands look as if they sat at it.
+
+Redone with integer bands only, the two apertures aligned by physical period:
+
+```
+period(h)   k=32 b   share    in-band  P_own   |   k=64 b   share    in-band  P_own
+  16.00        1    0.32323    1.000   0.916   |      2    0.17854    1.000   0.854
+   8.00        2    0.04961    1.000   0.835   |      4    0.05073    1.000   0.829
+   5.33        3    0.01170    1.000   0.719   |      6    0.00700    1.000   0.658
+   4.00        4    0.00698    1.000   0.756   |      8    0.00527    1.000   0.713
+   3.20        5    0.00342    1.000   0.744   |     10    0.00200    1.000   0.684
+   2.67        6    0.00226    1.000   0.722   |     12    0.00183    1.000   0.695
+   2.00        8    0.00114    1.000   0.700   |     16    0.00083    1.000   0.679
+   1.33       12    0.00066    1.000   0.712   |     24    0.00042    1.000   0.640
+   1.00       16    0.00054    1.000   0.711   |     32    0.00039    1.000   0.673
+```
+
+**The corrected reading**: with integer bands there is **no hard power floor** — all sixteen physical
+periods from 16 h to 1 h carry measurable power, falling smoothly by ~600× — and `in-band` is exactly
+**1.000 at every band of both apertures**. The two apertures do not differ in measurability at all;
+they differ in **horizon** (one patch = 16 h at k = 32, 32 h at k = 64), in **context** (256 h vs
+512 h), and in **window count** (2 122 vs 1 061). The choice between them is therefore about the
+forecasting horizon and the statistical mass, not about reach — and T1b's conclusion stands: k = 32 is
+safe as long as `P(b)` and `r_b` go through the same aperture.
+
+The lesson is the one this project keeps meeting: **a statistic computed over a grid that mixes
+measurable and non-measurable entries is not interpretable**, and the p10-based floor was exactly
+that. Findings 2 and 4 of the entry above are unaffected (they used the same windows and the drift is
+in `power`, not in the grid); finding 3's numbers are unaffected as well, but its "bands at the floor"
+list is void.
+
+## 2026-09-19 — T5 baseline on the real corpus: MASE passes, and the oracle turns out not to be an upper bound
+
+Script `experiments/10_real_profile/scripts/baseline.py` (per-window normalization from the context
+only; integer bands `b = 1..16`; hidden 64 / 2L / 4 heads; checkpoints every 100 steps to 2 000 then
+every 500 to 10 000; 3 seeds per split). Two splits, both run: **random half-split** (the controlled
+reading) and **first 80 % by time → last 20 %** (the practical one).
+
+### MASE passes in both splits, with very different margins
+
+```
+                     step   100     500    1000    2000    5000   10000
+random  (controlled) mase  1.3918  1.0039  0.9005  0.8000  0.6857  0.6014
+        var_explained      0.5136  0.7172  0.7647  0.8074  0.8540  0.8860
+blocked (practical)  mase  1.6431  1.3527  1.2463  1.1065  1.0053  0.9425
+        var_explained      0.4216  0.5932  0.6545  0.7261  0.7672  0.7971
+```
+
+The model beats the seasonal naive (denominator: MAE of the 24 h-lag forecast, 0.3876 in normalized
+units; persistence is 1.22) — **comfortably in the controlled setting (0.60) and only marginally in
+the practical one (0.94)**. That gap is the honest cost of the distribution shift: the blocked arm's
+probe is not exchangeable with its training marginal, and the corpus's per-band levels drift ~26 %
+between halves. Both numbers are reported; neither is quoted as "the" MASE.
+
+### The frozen-latent ridge is **not** an upper bound on this task
+
+```
+                     step   100     1000    2000    5000   10000    (headroom)
+random               +62.1%  +24.8%  +11.4%  -12.4%  -41.4%
+blocked              +30.3%   -1.7%  -29.3%  -47.4%  -61.8%
+```
+
+The headroom `(MSE_model − MSE_oracle)/MSE_model` goes **negative** and keeps falling: the trained
+nonlinear head ends up **40–60 % better than a linear readout of its own frozen latents**. So the
+ridge is not an upper bound here, and the number as defined does not answer "how much could a perfect
+head recover".
+
+Why it worked before and not now: in every synthetic run the task was a copy of a few tones, so a
+ridge on the latents was a strong readout and read ≈ 1 everywhere. On real electricity the task has
+genuine structure, the head is nonlinear (SwiGLU + attention), and a linear map from 64-dim latents
+to a 32-sample patch is a weak substitute for it. **Contract 5's oracle needs a stronger reference on
+real data** — either a model-free per-band predictability bound (T1's estimator: context band
+coefficients → target band coefficient, converted to retention units through the `r ≈ sqrt(P)`
+relation T2 measured) or a capacity ladder (a larger model trained the same way). The first is free
+and is the one that answers the intervention's question ("how much of this band is capturable at
+all"); the second answers a different question ("is this architecture at its capacity").
+
+### Per-band dynamics, random split (seed-mean)
+
+```
+step     r@1     r@2     r@3     r@4     r@5     r@6
+  100   0.961   0.856   0.980   1.145   1.600   1.788
+ 1000   1.095   1.040   0.954   1.137   1.242   1.375
+10000   1.098   1.012   1.009   1.176   1.210   1.205
+final oracle      1.060   1.008   1.024   1.040   1.124   1.160
+final dk          0.387   0.393   0.638   0.739   0.898   0.783
+power share       0.547   0.084   0.020   0.012   0.006   0.004
+```
+
+Two things to note.
+
+1. **`r > 1` at the weak bands** (1.2 at b ≥ 4 at convergence, relaxing down from 1.8 at step 100).
+   The model emits *more* band amplitude than the target carries — the emission-floor signature of
+   P7, still partly unconverged. Where `r > 1` the retention reading carries no information about
+   shrinkage. Seed sd is 0.007–0.023, so the excess is well outside noise.
+2. **The phase error is large where the amplitude is not**: at b=5–6, `r ≈ 1.21` with `dk ≈ 0.8–0.9`
+   implies a phase error of ≈ 47°, i.e. the model emits about the right amplitude with a badly wrong
+   phase. That is the first place on real data where `Δk` says something `r` does not.
+
+**Consequence for the intervention.** A retention-based readout at the weak bands is floor-limited
+(`r ≥ 1`), so the bands where an intervention could be *measured* are `b = 1..3` — which already carry
+92 % of the power. Before aiming at anything, the per-band **capturable bound** is needed: that is the
+next step, and it is free (one ridge per band, no training).
+
+## 2026-09-19 — T5 baseline with the model-free per-band bound: the headroom is a *transient*
+
+Second run of `scripts/baseline.py`, now with the per-band model-free bound. 3 seeds per split,
+checkpoints every 100 steps to 2 000 then every 500 to 10 000.
+
+**Why the bound changed.** The frozen-latent ridge from the previous run was 40–60 % *worse* than the
+trained model (negative headroom), so it could not detect a deficit at all. The replacement asks a
+different question: **what does the simplest possible predictor achieve at this band?** For each band,
+a ridge from the context's own coefficients at that band (16 complex = 32 real features) to the target
+patch's coefficient, fitted on training windows and scored on held-out ones — T1's `P(b)`. The
+retention equivalent is `sqrt(P)`, because "explains a fraction `P` of the variance" is "reproduces
+`sqrt(P)` of the amplitude" under the pooled-RMS convention (the relation T2 measured on this corpus
+to within 0.6 %). Null control, white noise through the identical pipeline: **−0.001**.
+
+**Every band is substantially capturable by a trivial rule**: `sqrt(P)` runs **0.82–0.96** across all
+sixteen bands, with no trend in `b`. Nothing here is hopeless.
+
+### The headroom closes with training, and that is the schedule story
+
+Random (controlled) split, `r_ms` and the residual ratio `res/floor` (1.0 = the model leaves exactly
+what the band-local linear rule leaves):
+
+```
+step      rms@b1  rms@b3  rms@b5  rms@b8 rms@b12 rms@b16      sqrt(P)
+   100     0.689   0.667   0.910   1.304   1.591   1.938   0.957 0.848 0.863 0.837 0.844 0.843
+  2000     0.949   0.734   0.809   0.959   1.014   1.141
+ 10000     0.968   0.855   0.865   0.932   0.988   1.048
+
+step   res/floor: b1    b3    b5    b8   b12   b16
+   100           1.74  1.43  2.04  3.34  5.83 17.39
+   500           0.85  0.98  1.26  1.69  1.94  6.20
+  2000           0.54  0.73  0.88  0.95  1.17  3.14
+ 10000           0.33  0.45  0.55  0.55  0.65  1.39
+```
+
+At 100 steps the model is **2–17× worse than a straight line** at every band; by 10 000 steps it is
+**better than the line at 15 of 16 bands** (0.31–0.82), with only `b = 16` (1 h period, share 0.13 %)
+still above at 1.39. So the headroom is **not a property of the band, it is a property of the
+budget** — the same shape as everything the synthetic programme found: given enough training every
+band lands below what a trivial rule achieves, and the *only* thing that varies between bands is how
+long that takes.
+
+Consequence for the intervention, and it is a design decision, not a caveat: **aim it at
+intermediate budgets (≈500–2 000 steps), where the headroom is demonstrably open, and read the effect
+there.** At 10 000 steps there is nothing left to win, which is exactly what the schedule account
+predicts (power sets the speed, never the fixed point).
+
+### The practical (blocked) split behaves differently
+
+```
+b                1      2      3      4      5      6      7      8   ...   16
+r_ms - sqrt(P) +0.013 -0.049 -0.204 -0.092 -0.116 -0.017 -0.023 +0.037 ... +0.282
+res/floor         0.68   0.68   1.58   1.22   1.37   1.34   1.43   1.64 ...  4.50
+```
+
+Under the distribution shift the model **loses to the band-local linear rule at `b = 2..7`** (up to
+−0.20 in retention units) and leaves 1.2–4.5× the rule's error everywhere. Both are evaluated on the
+same held-out windows, so the comparison is fair: **the model degrades under the shift more than a
+trivial linear rule does.** That is a different phenomenon from anything the synthetic programme
+studied, and it is the honest form of the "practical" result — the controlled split's comfortable
+0.60 MASE does not carry over to it (0.94).
+
+## 2026-09-19 — T5 step 3: the power-balance intervention — **the marginal does not schedule the real corpus**
+
+Four arms, three seeds, 10 000 steps, all on CPU. The real windows are never touched: `real` trains
+on the real training half alone, and `dilute` / `bal_mid` / `bal_hard` each add 1 061 synthetic
+windows (`make_pm_profile`, per-band power and per-band conditional predictability as separate
+knobs, `β_b = sqrt(−ln P(b))`) alongside the same 1 061 real ones. Every synthetic window is given
+the real corpus's **total** matched-band power, so no arm wins by carrying more energy — only by
+putting it in different bands. Design and pre-registration live in
+`10_real_profile/README.md`; the amendment to check 2 is recorded there.
+
+### Harness check first: the `real` arm is the baseline
+
+```
+step      100             1000             10000
+intervene  mse 0.488464   mse 0.236270    mse 0.114524   mase 0.601422
+baseline   mse 0.488464   mse 0.236270    mse 0.114524   mase 0.601422
+```
+
+Identical to six decimals at every checkpoint, as it must be — `intervene.py` calls the baseline's
+own `build` / `train` / `evaluate` unchanged, and only the array it trains on differs.
+
+### The manipulation landed, and the calibration is clean
+
+| arm | synthetic marginal | corpus marginal range |
+|---|---|---|
+| `real` | none | 537× |
+| `dilute` | the real profile exactly | 542× |
+| `bal_mid` | real blended halfway to flat | 38.5× |
+| `bal_hard` | flat over bands 3–15, nothing at 1–2 | 10.2× |
+
+`bal_hard` lifts band 15's corpus power 25× and band 3's 1.8×; `dilute` is flat at 0.98–1.00 of real
+on every band. The predictability calibration inside the run recovered 0.67–0.91 against targets of
+0.68–0.92 (every band within 0.03, median −0.015), so the added windows moved power and not
+predictability.
+
+### Check 2 passes, check 3 **fails**
+
+```
+arm        mse      mase     var expl
+real     0.1145    0.6014     +0.886
+dilute   0.1558    0.7070     +0.845
+bal_mid  0.1614    0.7254     +0.839
+bal_hard 0.1616    0.7279     +0.839
+```
+
+- **2 (one-sided): passes.** `dilute` is worse than `real` at all fifteen bands, by +0.092 to +0.267
+  in `res/floor`. Doubling the corpus with windows from a different source is not free.
+- **3: fails.** On the thirteen bands `bal_hard` lifts, `res/floor` at 10 000 steps is worse than
+  `dilute` at **13 of 13**, by a factor 1.13–1.51; the crossing step of `res/floor ≤ 2` is *later* at
+  eight, tied at three, earlier at two. `bal_mid` is a wash on crossing (later 4, tie 5, earlier 4)
+  and worse on the endpoint.
+
+```
+crossing step of res/floor <= 2.0        res/floor at 10 000
+b     real  dilute  bal_mid  bal_hard    real  dilute  bal_mid  bal_hard
+6      200     300      300       400    0.47   0.60     0.62     0.68
+10     600    1200     1300      2500    0.60   0.76     0.89     0.95
+12     500     800      800      1700    0.65   0.80     0.96     1.12
+15    1100    2500     3000      4500    0.76   1.03     1.33     1.40
+```
+
+The absolute per-band residual says the same thing without the floor: `bal_hard / dilute` runs
+0.96–1.51× across the fifteen bands, and the bands it did *not* touch (b1 1.03×, b2 0.96×) are the
+ones that did not move.
+
+### Why this does not settle the question, in two parts
+
+**The contrast is band-correlated by construction.** Raising a weak band's share means adding power
+where the corpus is quiet, so no band is left unmanipulated: "the weak bands are harder" and "the
+weak bands were manipulated" are the same contrast in every arm. The run falsifies the
+pre-registered *prediction* for this construction; it does not falsify the share→schedule law.
+
+**What the added power did instead looks like interference, not a schedule.** Band 15's corpus power
+is 25× `dilute`'s, and the model's residual at band 15 *on the real probe* moves 2.63e-4 → 3.56e-4 —
+1.36×, in the wrong direction, not 25×. Meanwhile the first two bands, which the synthetic profile
+does not touch at all, are the two that do not move (`bal_hard / dilute` 1.03× at b1, 0.96× at b2,
+against 1.13–1.51× at b3–b15). And the direction of the change at the top bands is amplitude up,
+phase down: `r_ms` at band 15 is 0.926 → 1.022 while `Δk` is 1.374 → 1.667, with `r_r` 1.60 → 1.86.
+That is the signature of an output pulled towards the synthetic windows — where that band is loud and
+its phase is a diffusing carrier — rather than of a band learned faster.
+
+**What was not measured.** The corpus loss share, the quantity P13/P15's law is written in, needs the
+model's per-band residual on the *synthetic* windows, and the run saved no checkpoints. On the real
+probe it moves 0.169 % → 0.220 % between `dilute` and `bal_hard`, which is a different number about a
+different distribution; it is not evidence that the law's quantity stayed put. A corpus-matched
+synthetic probe on a re-run is the diagnostic that would settle it, and it was in the "known limits"
+of the pre-registration as the follow-up that separates "power does not schedule real data" from
+"this construction is not neutral".
+
+### The one reading that goes the other way, and why it is not support
+
+Pooled-RMS retention `r_ms` at the top bands is *slightly higher* for the balance arms — band 15:
+`real` 0.997, `dilute` 0.926, `bal_mid` 0.983, `bal_hard` 1.022 — while `res/floor` is worse. The
+divergence is phase: `Δk` at band 15 is 1.374 (`dilute`) against 1.667 (`bal_hard`). The balance arms
+emit *more* amplitude at those bands (`r_r` 1.86 against 1.60) with worse phase, which is the
+signature of an output pulled towards the synthetic windows, where that band is loud and its phase is
+a diffusing carrier — not of a band learned faster. Reported, not counted as support.
+
+### What this changes
+
+The additive-mixture intervention cannot test the marginal hypothesis as built: adding power where
+the corpus is quiet means the manipulated bands *are* the weak bands, so there is no unmanipulated
+band to compare against, and the treatment turns out to interfere rather than to be neutral. Two
+things follow. First, a **single-band boost** — synthetic profile = the real profile *plus* a bump at
+one band — is the version that can be read, because the corpus marginal then moves at exactly one
+band and the other fourteen are an internal control over the same corpus size and window type.
+Second, the **corpus-matched probe** has to be built before the next run, not after: without it
+there is no way to tell "the band was not learned" from "the band was learned on the wrong
+distribution".
+
+## 2026-09-19 — T5 step 5: **the horizon does not create a predictability gradient** (model-free)
+
+Script `experiments/10_real_profile/scripts/horizon_profile.py`. Nothing is trained: for each horizon
+`h` in patches the T5 baseline's band-only ridge -- the context's own coefficients at a band to the
+target patch's coefficient at that band, fitted on training windows and scored on held-out ones, the
+estimator behind `P(b)` and `res/floor` -- is refitted with the target moved `h` patches past the
+context. Horizons 1, 2, 4, 8, 16 patches, i.e. the target's first sample is 0-240 h past the context
+and its last 16-256 h. One stride for every `h`, so the 1 126 window starts are identical across
+horizons and the readings are comparable; the windows never overlap.
+
+**Why it exists.** Everything in the project forecasts *one patch* ahead, and the mechanisms that are
+supposed to make high frequencies intrinsically harder -- turbulence's scale-local cascade,
+autocorrelation decay, microstructure noise in markets -- are all statements about how predictability
+decays with *lead time*. They predict a per-band predictability gradient that is small at short leads
+and grows with the lead. If so, the project's flat `P(b)` would be an artifact of a short horizon, and
+the TSFM literature's long horizons (96-720 samples) would be sampling a different regime. That is
+the one scope gap this run closes or confirms.
+
+Three corpora, so the real reading comes with a benchmark and a floor. `pm` is the standard
+phase-diffusing generator carrying the real profile and the real per-band `P(b)`; its phase advances
+by an independent `beta eps` per patch boundary, so over `h` patches the cumulative step is
+`N(0, h beta^2)` and the predictable variance fraction is **exactly `P_h(b) = P_1(b)**h`** -- an
+analytic benchmark for a corpus whose predictability is memoryless per patch. `null` is white noise
+through the identical pipeline.
+
+```
+  corpus   h   P(b1)  P(b15)   span  Spearman  vs P_1^h MAE (abs)
+  real     1   0.901   0.802   1.12    -0.175         0.000
+  real     2   0.892   0.746   1.20    -0.379         0.118
+  real     4   0.878   0.736   1.19    -0.232         0.348
+  real     8   0.894   0.797   1.12    -0.268         0.636
+  real    16   0.884   0.805   1.10    +0.025         0.745
+  pm       1   0.923   0.755   1.22    -0.396         0.000
+  pm       8   0.503   0.088   5.73    -0.136         0.018
+  pm      16   0.237   0.003     n/a    +0.168         0.012
+  null    16  -0.000  -0.005     n/a    -0.450         0.004
+```
+
+### Check 1 holds, and the benchmark is sound
+
+Null worst `|P|` **0.0266** (tolerance 0.05). PM against its own `P_1(b)**h`: mean absolute deviation
+**0.0155** over the 50 cells whose benchmark is above 0.10, worst **0.068** at b9 h=2. The
+pre-registered *max* tolerance of 0.03 is therefore missed on that single cell and holds in the mean;
+both are reported, and the tolerance was not rewritten after the fact. (Two bugs were found and fixed
+before the reading: the long window's frequency scaling, and `sqrt(-max(log P, 0))`, which silently
+zeroed every beta and made the benchmark perfectly predictable.)
+
+### Result: no gradient at any horizon
+
+The real corpus's `P_h(b)` is **flat in `h` and flat in `b`**. Span across bands 1.12 / 1.20 / 1.19 /
+1.12 / 1.10 at h = 1/2/4/8/16, Spearman with band −0.175 / −0.379 / −0.232 / −0.268 / **+0.025**.
+Nothing emerges, and the gradient at 16 patches is no larger than at one. **The one-patch flatness is
+not an artifact of the short horizon**, so the literature's long horizons do not, on this corpus,
+reach a regime where predictability tilts with frequency.
+
+### And the corpus decays far slower than memoryless
+
+`P_h(b) / P_1(b)**h` at h = 16 runs **4.7× (b1) to 92× (b8)** -- the real corpus's predictability
+decays far *slower* than the analytic per-patch benchmark, not faster. At 128 h ahead the 16 h band
+is still 88 % predictable and the 1 h band 80 %. Electricity demand is quasi-periodic; there is no
+fast-decorrelating high-frequency component for the cascade or ACF argument to act on, and none
+appears at any horizon tested.
+
+**Scope.** This is one corpus, and the mechanisms are claims about *their* domains. The run says the
+horizon does not create a gradient in electricity demand over 0-256 h leads, and that the project's
+flat `P(b)` is therefore not a horizon artifact. It does not test turbulence or markets; a corpus
+where the mechanism actually operates would still have to be measured, and there the two tilts are
+expected to be collinear, which is why the field can read the whole thing as a frequency effect at
+all.
+
+### Correction found while reading step 5: the `in-band` column cannot see continuum leakage
+
+Step 5's `P_h(b15) = 0.80` at a 128 h lead is implausible for 1 h-period content, so the leakage behind
+it was measured directly: zero every window-DFT bin below band 1 (`f < 1` cycle/patch, i.e. the 24 h
+cycle, the weekly cycle and all trends) and recompute the matched power.
+
+```
+b        1      2      3      4      5      6      7      8      9     10     11     12     13     14     15
+kept  0.245  0.771  1.184  0.806  1.161  0.910  0.743  0.826  0.598  0.803  0.614  0.789  0.700  0.804  0.747
+```
+
+**Band 1's reading is 75 % sub-band-1 leakage; bands 2–15 keep 60–91 % of their power** (median ~0.80).
+The profiling's `in-band` column reads exactly 1.000 at every integer band and **cannot detect this**:
+`in_band` band-limits each *patch* to `|f - b| <= 0.5` cycles/patch, which at integer `b` keeps exactly
+the one bin the matched filter reads. It is a tautology at integer bands, and the sub-band-1 continuum
+has no bin of its own — a 24 h tone observed through a 32-sample patch spreads across *all* of them.
+The column is still informative at half-integer `b` (where it was 0.09–0.90) and for cross-aperture
+comparisons, but "in-band = 1.000" must **not** be read as "no leakage".
+
+**Does it change the story? No — it is measured, not argued.** Re-running the same band-only ridge on
+the high-passed corpus:
+
+```
+b           1      2      3      4      5      6      7      8      9     10     11     12     13     14     15
+P raw    0.904  0.826  0.746  0.772  0.754  0.735  0.753  0.713  0.748  0.720  0.777  0.740  0.790  0.716  0.799
+P hi-p   0.991  0.823  0.855  0.813  0.876  0.823  0.832  0.818  0.819  0.819  0.786  0.825  0.768  0.816  0.787
+span      1.268 raw   ->   1.291 high-passed
+Spearman -0.261 raw   ->   -0.661 high-passed
+```
+
+Removing the continuum **raises** `P` at most bands, so the leakage was not inflating the flat reading;
+the genuine in-band content is flat-to-mildly-tilted (a 1.3× span). The corrected **power** span is
+546× raw -> **170×** high-passed (b1 0.134 against b15 7.9e-4). Two orders of magnitude still separate
+the two asymmetries, so the direction account is unchanged: **power 170×, predictability 1.3×.**
+
+## 2026-09-19 — T5 step 4 (pure tones): **adding tones at a band makes that band worse** — check 3 fails, in the opposite direction
+
+`scripts/intervene_tone.py`, 4 arms x 4 seeds x 10 000 steps. Real windows untouched; one tone window
+per ten real ones, each a single unit-variance pure tone (beta = 0), so a tone band's corpus power is
+~0.092 and every non-tone band sits at exactly 0.909x `real`, **identically in all three tone arms**.
+
+### Checks 1 and 2 hold; the manipulation is exact
+
+Dose at the tone bands 0.0944 / 0.0921 / 0.0918 (spread 2.88 %); outside them the three tone arms agree
+to the last digit (spread 0.000 %). In absolute terms the internal control is **18x** cleaner than the
+effect: the largest |delta| between tone arms is **0.017** at the twelve non-tone bands against **0.301**
+at the tone bands. (The 3-sd rule fails technically at b1, where delta 0.003 meets sd 0.001 -- a 1 %
+relative difference; reported, not excused.)
+
+### Check 3 fails, and `real` is the best arm everywhere
+
+```
+b    real probe, res/floor at 10 000        max |delta|
+       real  tone_b6  tone_b10  tone_b14   among tone arms
+ 6    0.469     0.547     0.490     0.485      0.062   <- tone band
+10    0.596     0.622     0.834     0.618      0.215   <- tone band
+14    0.668     0.683     0.696     0.985      0.301   <- tone band
+ 1-5,7-9,11-13,15                             0.000-0.017
+```
+
+The diagonal is **absent**: in every column the minimum is `real`, the arm with *no* synthetic data.
+Each tone arm is worse at its own band, monotonically in band -- the paired, seed-matched contrasts are
+**+0.057 ± 0.023** (b6), **+0.211 ± 0.040** (b10), **+0.301 ± 0.061** (b14), i.e. 2.5-7 sd. Crossing steps:
+b10 1 400 against `real`'s 500; b14 1 700 against 800. **Check 4 also fails**: the diagonal is
+0.547 / 0.834 / 0.985, a spread of 0.438, against a dose spread of 2.9 %.
+
+### The effect is sharply band-specific, and the mechanism is visible
+
+The harm is largest at the arm's *own* band by a factor 5-10 over every other band (tone_b14: +0.317 at
+b14, next largest +0.044), and it is present from the first checkpoint (b14: 7.22 against 6.36 at step
+100) and never closes. Three readings say what it is:
+
+- **the tone is learned perfectly.** The `own` probe -- whole-window MSE on a fresh draw from the arm's
+  own corpus -- falls to **0.0006-0.0008** at 10k in every tone arm (a deterministic tone, so it must),
+  against 1.757 for `real`. The intervention did what it was built to do.
+- **the band's real-profile content is *not* helped and is hurt.** On the `mimic` probe (real-profile
+  synthetic windows, never trained on) the tone arms read 5.745 / 10.991 / 13.793 at their own bands
+  against `real`'s 4.566 / 5.877 / 6.534.
+- **so the model's band-b output is specialised to the tone**, at the expense of the band's real
+  content. This is interference, not a schedule: the extra energy bought a tone that was then copied,
+  not a band that was then learned.
+
+### The design flaw, owned
+
+With a *fixed absolute* tone power the tone's dominance over the band's real content is **graded
+24x / 67x / 90x** (b6 / b10 / b14). The arms therefore differ in band *and* in relative dose, and the
+"is it the share or the band" reading is confounded -- the diagonal's monotone ordering tracks the
+relative dose as well as the band. The two normalisations are in tension for pure tones: equal
+*absolute* dose gives equal corpus share but graded relative dose, and equal *relative* dose gives equal
+dominance but graded share. **Pure tones cannot deliver a same-share/different-frequency test**, and
+that is a structural lesson about the design space rather than a fixable slip.
+
+### What this settles, and what it does not
+
+**Two independent interventions now agree.** Step 3's mimic-balance corpus and step 4's pure tones both
+added energy at a band, both with a dilution-matched internal control, and neither bought that band on
+real windows -- step 4 with the opposite sign and a visible mechanism. So on this corpus, **"add
+synthetic data at the weak bands" does not fix the frequency bias; it makes the target band worse.**
+
+**The scope statement this forces.** The synthetic programme's law `r = G(share)` was established on
+corpora where the *probe and the corpus are the same distribution*. Step 4 shows what happens off that
+footing: the model's band-b output is a single function serving a mixture, and the synthetic component
+-- easier, and carrying a share of the loss -- takes it over at the real component's expense. **The
+share account locates the deficit; it does not license the practical inference that adding synthetic
+energy removes it.** That is the honest form of the "so just add data" objection, and the paper should
+say it in exactly these terms.

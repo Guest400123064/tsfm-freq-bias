@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from fbias.data import b_of, make_mixture
+from fbias.data import b_of, make_mixture, make_pm, make_pm_profile
 from fbias.probes import delta_k, matched_amp, phase_error, retention
 
 K = 32
@@ -68,3 +68,22 @@ def test_make_mixture_spacing():
     x = make_mixture([2.0, 18.0], 4, 512, K, 0)
     assert x.shape == (4, 512 + K)
     assert b_of(18.0, K, 512) - b_of(2.0, K, 512) == 1.0
+
+
+def test_make_pm_profile_power_and_flat_case():
+    # f = 16 and 32 cycles per 512 samples are b = 1 and b = 2 at k = 32.
+    freqs = torch.tensor([16.0, 32.0])
+    powers = torch.tensor([0.4, 0.1])
+    x, _ = make_pm_profile(freqs, powers, [0.0, 0.0], 8, 512, K, 0)
+    assert x.square().mean().item() == pytest.approx(0.5, rel=1e-5)
+
+    for j, b in enumerate((1.0, 2.0)):
+        z = matched_amp(x.unfold(1, K, K), b, K)
+        assert (z.abs() ** 2 / 2).mean().item() == pytest.approx(
+            powers[j].item(), rel=1e-4
+        )
+
+    # Flat power is make_pm: same windows, bit for bit.
+    maybe = torch.tensor([0.3, 0.0])
+    flat = make_pm_profile(freqs, [0.25, 0.25], maybe, 4, 512, K, 1)
+    assert torch.equal(make_pm(freqs, maybe, 4, 512, K, 1)[0], flat[0])
