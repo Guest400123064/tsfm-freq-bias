@@ -1,0 +1,1146 @@
+TimesFM 2.5 architecture dump  (2026-10-08 22:05:11)
+model id       : google/timesfm-2.5-200m-pytorch
+timesfm pkg    : 3.0.2
+torch          : 2.7.1+cu126
+cuda available : True
+loaded in 2.6s; device=cuda:0; params=231.289M
+
+==============================================================================
+== framework-agnostic config
+==============================================================================
+  (timesfm_2p5_base.TimesFM_2p5_200M_Definition)
+  TimesFM_2p5_200M_Definition:
+    input_patch_len = 32
+    output_patch_len = 128
+    output_quantile_len = 1024
+    quantiles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    decode_index = 5
+    tokenizer = ResidualBlockConfig
+      ResidualBlockConfig:
+        input_dims = 64
+        hidden_dims = 1280
+        output_dims = 1280
+        use_bias = True
+        activation = 'swish'
+    stacked_transformers = StackedTransformersConfig
+      StackedTransformersConfig:
+        num_layers = 20
+        transformer = TransformerConfig
+          TransformerConfig:
+            model_dims = 1280
+            hidden_dims = 1280
+            num_heads = 16
+            attention_norm = 'rms'
+            feedforward_norm = 'rms'
+            qk_norm = 'rms'
+            use_bias = False
+            use_rotary_position_embeddings = True
+            ff_activation = 'swish'
+            fuse_qkv = True
+    output_projection_point = ResidualBlockConfig
+      ResidualBlockConfig:
+        input_dims = 1280
+        hidden_dims = 1280
+        output_dims = 1280
+        use_bias = False
+        activation = 'swish'
+    output_projection_quantiles = ResidualBlockConfig
+      ResidualBlockConfig:
+        input_dims = 1280
+        hidden_dims = 1280
+        output_dims = 10240
+        use_bias = False
+        activation = 'swish'
+
+==============================================================================
+== derived scalar attributes on the torch module
+==============================================================================
+  self.p = 32
+  self.o = 128
+  self.os = 1024
+  self.m = 4
+  self.x = 20
+  self.h = 16
+  self.md = 1280
+  self.hd = 80
+  self.q = 10
+  self.aridx = 5
+  self.device = device(type='cuda', index=0)
+
+  input_patch_len p          = 32   (-> 64 tokens after [patch, mask])
+  output_patch_len o         = 128  = 4 * p   (self.m = o // p)
+  output_quantile_len os     = 1024 = 8 * o
+  quantiles                  = 9 + point -> q = 10
+  decode_index               = 5    (median / 0.5 quantile)
+
+  HF config.json shipped with the checkpoint:
+  /home/catcat/.cache/huggingface/hub/models--google--timesfm-2.5-200m-pytorch/snapshots/1d952420fba87f3c6dee4f240de0f1a0fbc790e3/config.json
+{
+  "architectures": [
+    "TimesFmModelForPrediction"
+  ],
+  "context_length": 16384,
+  "head_dim": 80,
+  "hidden_size": 1280,
+  "horizon_length": 128,
+  "intermediate_size": 1280,
+  "model_type": "timesfm",
+  "num_attention_heads": 16,
+  "num_hidden_layers": 20,
+  "patch_length": 32,
+  "quantile_horizon_length": 1024,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "rms_norm_eps": 1e-06,
+  "torch_compile": false
+}
+
+==============================================================================
+== named_modules(): class, own params, recursive params
+==============================================================================
+  <root>                                       timesfm_2p5_torch.TimesFM_2p5_200M_torch_module own=         0 rec=  231289280
+  tokenizer                                    dense.ResidualBlock                        own=         0 rec=    1806080
+  tokenizer.hidden_layer                       linear.Linear                              own=     83200 rec=      83200
+  tokenizer.output_layer                       linear.Linear                              own=   1639680 rec=    1639680
+  tokenizer.residual_layer                     linear.Linear                              own=     83200 rec=      83200
+  tokenizer.activation                         activation.SiLU                            own=         0 rec=          0
+  stacked_xf                                   container.ModuleList                       own=         0 rec=  196715200
+  stacked_xf.0                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.0.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.0.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.0.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.0.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.0.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.0.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.0.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.0.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.0.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.0.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.0.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.0.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.0.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.0.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.1                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.1.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.1.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.1.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.1.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.1.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.1.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.1.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.1.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.1.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.1.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.1.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.1.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.1.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.1.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.2                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.2.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.2.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.2.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.2.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.2.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.2.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.2.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.2.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.2.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.2.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.2.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.2.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.2.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.2.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.3                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.3.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.3.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.3.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.3.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.3.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.3.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.3.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.3.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.3.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.3.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.3.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.3.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.3.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.3.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.4                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.4.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.4.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.4.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.4.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.4.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.4.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.4.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.4.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.4.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.4.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.4.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.4.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.4.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.4.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.5                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.5.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.5.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.5.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.5.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.5.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.5.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.5.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.5.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.5.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.5.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.5.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.5.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.5.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.5.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.6                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.6.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.6.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.6.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.6.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.6.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.6.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.6.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.6.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.6.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.6.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.6.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.6.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.6.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.6.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.7                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.7.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.7.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.7.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.7.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.7.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.7.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.7.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.7.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.7.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.7.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.7.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.7.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.7.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.7.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.8                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.8.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.8.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.8.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.8.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.8.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.8.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.8.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.8.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.8.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.8.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.8.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.8.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.8.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.8.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.9                                 transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.9.pre_attn_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.9.post_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.9.attn                            transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.9.attn.qkv_proj                   linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.9.attn.out                        linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.9.attn.query_ln                   normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.9.attn.key_ln                     normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.9.attn.rotary_position_embedding  transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.9.attn.per_dim_scale              transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.9.pre_ff_ln                       normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.9.post_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.9.ff0                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.9.ff1                             linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.9.activation                      activation.SiLU                            own=         0 rec=          0
+  stacked_xf.10                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.10.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.10.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.10.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.10.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.10.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.10.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.10.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.10.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.10.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.10.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.10.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.10.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.10.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.10.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.11                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.11.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.11.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.11.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.11.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.11.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.11.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.11.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.11.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.11.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.11.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.11.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.11.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.11.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.11.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.12                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.12.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.12.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.12.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.12.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.12.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.12.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.12.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.12.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.12.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.12.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.12.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.12.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.12.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.12.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.13                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.13.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.13.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.13.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.13.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.13.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.13.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.13.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.13.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.13.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.13.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.13.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.13.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.13.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.13.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.14                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.14.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.14.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.14.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.14.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.14.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.14.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.14.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.14.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.14.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.14.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.14.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.14.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.14.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.14.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.15                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.15.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.15.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.15.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.15.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.15.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.15.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.15.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.15.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.15.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.15.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.15.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.15.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.15.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.15.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.16                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.16.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.16.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.16.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.16.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.16.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.16.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.16.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.16.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.16.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.16.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.16.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.16.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.16.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.16.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.17                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.17.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.17.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.17.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.17.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.17.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.17.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.17.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.17.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.17.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.17.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.17.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.17.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.17.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.17.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.18                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.18.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.18.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.18.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.18.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.18.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.18.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.18.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.18.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.18.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.18.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.18.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.18.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.18.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.18.activation                     activation.SiLU                            own=         0 rec=          0
+  stacked_xf.19                                transformer.Transformer                    own=         0 rec=    9835760
+  stacked_xf.19.pre_attn_ln                    normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.19.post_attn_ln                   normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.19.attn                           transformer.MultiHeadAttention             own=         0 rec=    6553840
+  stacked_xf.19.attn.qkv_proj                  linear.Linear                              own=   4915200 rec=    4915200
+  stacked_xf.19.attn.out                       linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.19.attn.query_ln                  normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.19.attn.key_ln                    normalization.RMSNorm                      own=        80 rec=         80
+  stacked_xf.19.attn.rotary_position_embedding transformer.RotaryPositionalEmbedding      own=         0 rec=          0
+  stacked_xf.19.attn.per_dim_scale             transformer.PerDimScale                    own=        80 rec=         80
+  stacked_xf.19.pre_ff_ln                      normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.19.post_ff_ln                     normalization.RMSNorm                      own=      1280 rec=       1280
+  stacked_xf.19.ff0                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.19.ff1                            linear.Linear                              own=   1638400 rec=    1638400
+  stacked_xf.19.activation                     activation.SiLU                            own=         0 rec=          0
+  output_projection_point                      dense.ResidualBlock                        own=         0 rec=    4915200
+  output_projection_point.hidden_layer         linear.Linear                              own=   1638400 rec=    1638400
+  output_projection_point.output_layer         linear.Linear                              own=   1638400 rec=    1638400
+  output_projection_point.residual_layer       linear.Linear                              own=   1638400 rec=    1638400
+  output_projection_point.activation           activation.SiLU                            own=         0 rec=          0
+  output_projection_quantiles                  dense.ResidualBlock                        own=         0 rec=   27852800
+  output_projection_quantiles.hidden_layer     linear.Linear                              own=   1638400 rec=    1638400
+  output_projection_quantiles.output_layer     linear.Linear                              own=  13107200 rec=   13107200
+  output_projection_quantiles.residual_layer   linear.Linear                              own=  13107200 rec=   13107200
+  output_projection_quantiles.activation       activation.SiLU                            own=         0 rec=          0
+
+==============================================================================
+== module-class census (recursive parameter mass)
+==============================================================================
+  timesfm_2p5_torch.TimesFM_2p5_200M_torch_module    count=    1 recursive_params=   231289280
+  linear.Linear                                      count=   89 recursive_params=   231182080
+  container.ModuleList                               count=    1 recursive_params=   196715200
+  transformer.Transformer                            count=   20 recursive_params=   196715200
+  transformer.MultiHeadAttention                     count=   20 recursive_params=   131076800
+  dense.ResidualBlock                                count=    3 recursive_params=    34574080
+  normalization.RMSNorm                              count=  120 recursive_params=      105600
+  transformer.PerDimScale                            count=   20 recursive_params=        1600
+  activation.SiLU                                    count=   23 recursive_params=           0
+  transformer.RotaryPositionalEmbedding              count=   20 recursive_params=           0
+
+==============================================================================
+== unique module classes actually present
+==============================================================================
+  [ok] activation.SiLU                              count=  23  e.g. tokenizer.activation
+  [ok] container.ModuleList                         count=   1  e.g. stacked_xf
+  [ok] dense.ResidualBlock                          count=   3  e.g. tokenizer
+  [ok] linear.Linear                                count=  89  e.g. tokenizer.hidden_layer
+  [ok] normalization.RMSNorm                        count= 120  e.g. stacked_xf.0.pre_attn_ln
+  [ok] transformer.MultiHeadAttention               count=  20  e.g. stacked_xf.0.attn
+  [ok] transformer.PerDimScale                      count=  20  e.g. stacked_xf.0.attn.per_dim_scale
+  [ok] transformer.RotaryPositionalEmbedding        count=  20  e.g. stacked_xf.0.attn.rotary_position_embedding
+  [ok] transformer.Transformer                      count=  20  e.g. stacked_xf.0
+
+  -> every module is one of: Linear / RMSNorm / ResidualBlock /
+     Transformer / MultiHeadAttention / RotaryPositionalEmbedding /
+     PerDimScale / SiLU / ModuleList. Nothing multi-rate, hierarchical
+     or convolutional.
+
+==============================================================================
+== leaf modules that actually hold weights
+==============================================================================
+  tokenizer.hidden_layer                         linear.Linear                            params=     83200
+  tokenizer.output_layer                         linear.Linear                            params=   1639680
+  tokenizer.residual_layer                       linear.Linear                            params=     83200
+  stacked_xf.0.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.0.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.0.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.0.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.0.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.0.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.0.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.0.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.0.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.0.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.0.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.1.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.1.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.1.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.1.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.1.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.1.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.1.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.1.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.1.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.1.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.1.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.2.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.2.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.2.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.2.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.2.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.2.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.2.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.2.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.2.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.2.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.2.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.3.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.3.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.3.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.3.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.3.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.3.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.3.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.3.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.3.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.3.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.3.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.4.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.4.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.4.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.4.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.4.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.4.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.4.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.4.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.4.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.4.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.4.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.5.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.5.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.5.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.5.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.5.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.5.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.5.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.5.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.5.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.5.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.5.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.6.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.6.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.6.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.6.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.6.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.6.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.6.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.6.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.6.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.6.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.6.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.7.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.7.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.7.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.7.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.7.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.7.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.7.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.7.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.7.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.7.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.7.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.8.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.8.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.8.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.8.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.8.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.8.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.8.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.8.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.8.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.8.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.8.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.9.pre_attn_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.9.post_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.9.attn.qkv_proj                     linear.Linear                            params=   4915200
+  stacked_xf.9.attn.out                          linear.Linear                            params=   1638400
+  stacked_xf.9.attn.query_ln                     normalization.RMSNorm                    params=        80
+  stacked_xf.9.attn.key_ln                       normalization.RMSNorm                    params=        80
+  stacked_xf.9.attn.per_dim_scale                transformer.PerDimScale                  params=        80
+  stacked_xf.9.pre_ff_ln                         normalization.RMSNorm                    params=      1280
+  stacked_xf.9.post_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.9.ff0                               linear.Linear                            params=   1638400
+  stacked_xf.9.ff1                               linear.Linear                            params=   1638400
+  stacked_xf.10.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.10.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.10.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.10.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.10.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.10.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.10.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.10.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.10.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.10.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.10.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.11.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.11.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.11.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.11.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.11.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.11.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.11.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.11.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.11.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.11.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.11.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.12.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.12.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.12.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.12.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.12.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.12.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.12.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.12.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.12.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.12.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.12.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.13.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.13.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.13.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.13.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.13.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.13.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.13.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.13.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.13.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.13.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.13.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.14.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.14.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.14.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.14.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.14.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.14.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.14.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.14.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.14.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.14.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.14.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.15.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.15.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.15.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.15.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.15.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.15.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.15.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.15.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.15.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.15.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.15.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.16.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.16.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.16.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.16.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.16.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.16.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.16.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.16.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.16.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.16.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.16.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.17.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.17.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.17.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.17.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.17.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.17.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.17.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.17.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.17.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.17.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.17.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.18.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.18.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.18.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.18.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.18.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.18.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.18.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.18.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.18.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.18.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.18.ff1                              linear.Linear                            params=   1638400
+  stacked_xf.19.pre_attn_ln                      normalization.RMSNorm                    params=      1280
+  stacked_xf.19.post_attn_ln                     normalization.RMSNorm                    params=      1280
+  stacked_xf.19.attn.qkv_proj                    linear.Linear                            params=   4915200
+  stacked_xf.19.attn.out                         linear.Linear                            params=   1638400
+  stacked_xf.19.attn.query_ln                    normalization.RMSNorm                    params=        80
+  stacked_xf.19.attn.key_ln                      normalization.RMSNorm                    params=        80
+  stacked_xf.19.attn.per_dim_scale               transformer.PerDimScale                  params=        80
+  stacked_xf.19.pre_ff_ln                        normalization.RMSNorm                    params=      1280
+  stacked_xf.19.post_ff_ln                       normalization.RMSNorm                    params=      1280
+  stacked_xf.19.ff0                              linear.Linear                            params=   1638400
+  stacked_xf.19.ff1                              linear.Linear                            params=   1638400
+  output_projection_point.hidden_layer           linear.Linear                            params=   1638400
+  output_projection_point.output_layer           linear.Linear                            params=   1638400
+  output_projection_point.residual_layer         linear.Linear                            params=   1638400
+  output_projection_quantiles.hidden_layer       linear.Linear                            params=   1638400
+  output_projection_quantiles.output_layer       linear.Linear                            params=  13107200
+  output_projection_quantiles.residual_layer     linear.Linear                            params=  13107200
+
+==============================================================================
+== keyword scan over module and parameter names
+==============================================================================
+  conv              0 hit(s)
+  pool              0 hit(s)
+  fft               0 hit(s)
+  rfft              0 hit(s)
+  dct               0 hit(s)
+  dwt               0 hit(s)
+  wavelet           0 hit(s)
+  downsample        0 hit(s)
+  down_sample       0 hit(s)
+  upsample          0 hit(s)
+  up_sample         0 hit(s)
+  resample          0 hit(s)
+  stride            0 hit(s)
+  pyramid           0 hit(s)
+  hierarch          0 hit(s)
+  scale           160 hit(s)   e.g. ['stacked_xf.0.attn.per_dim_scale', 'stacked_xf.1.attn.per_dim_scale', 'stacked_xf.2.attn.per_dim_scale', 'stacked_xf.3.attn.per_dim_scale']
+  subband           0 hit(s)
+  filterbank        0 hit(s)
+  bank              0 hit(s)
+  lattice           0 hit(s)
+  radix             0 hit(s)
+  dilat             0 hit(s)
+  patch_embed       0 hit(s)
+  embedding        20 hit(s)   e.g. ['stacked_xf.0.attn.rotary_position_embedding', 'stacked_xf.1.attn.rotary_position_embedding', 'stacked_xf.2.attn.rotary_position_embedding', 'stacked_xf.3.attn.rotary_position_embedding']
+
+==============================================================================
+== state_dict() keys, shapes, dtypes
+==============================================================================
+  tokenizer.hidden_layer.weight                  (1280, 64)             torch.float32       81920
+  tokenizer.hidden_layer.bias                    (1280,)                torch.float32        1280
+  tokenizer.output_layer.weight                  (1280, 1280)           torch.float32     1638400
+  tokenizer.output_layer.bias                    (1280,)                torch.float32        1280
+  tokenizer.residual_layer.weight                (1280, 64)             torch.float32       81920
+  tokenizer.residual_layer.bias                  (1280,)                torch.float32        1280
+  stacked_xf.0.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.0.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.0.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.0.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.0.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.0.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.0.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.0.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.0.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.0.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.0.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.1.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.1.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.1.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.1.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.1.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.1.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.1.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.1.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.1.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.1.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.1.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.2.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.2.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.2.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.2.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.2.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.2.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.2.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.2.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.2.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.2.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.2.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.3.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.3.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.3.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.3.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.3.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.3.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.3.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.3.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.3.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.3.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.3.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.4.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.4.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.4.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.4.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.4.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.4.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.4.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.4.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.4.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.4.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.4.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.5.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.5.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.5.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.5.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.5.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.5.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.5.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.5.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.5.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.5.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.5.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.6.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.6.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.6.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.6.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.6.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.6.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.6.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.6.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.6.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.6.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.6.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.7.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.7.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.7.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.7.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.7.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.7.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.7.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.7.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.7.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.7.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.7.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.8.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.8.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.8.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.8.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.8.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.8.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.8.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.8.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.8.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.8.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.8.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.9.pre_attn_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.9.post_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.9.attn.qkv_proj.weight              (3840, 1280)           torch.float32     4915200
+  stacked_xf.9.attn.out.weight                   (1280, 1280)           torch.float32     1638400
+  stacked_xf.9.attn.query_ln.scale               (80,)                  torch.float32          80
+  stacked_xf.9.attn.key_ln.scale                 (80,)                  torch.float32          80
+  stacked_xf.9.attn.per_dim_scale.per_dim_scale  (80,)                  torch.float32          80
+  stacked_xf.9.pre_ff_ln.scale                   (1280,)                torch.float32        1280
+  stacked_xf.9.post_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.9.ff0.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.9.ff1.weight                        (1280, 1280)           torch.float32     1638400
+  stacked_xf.10.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.10.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.10.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.10.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.10.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.10.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.10.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.10.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.10.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.10.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.10.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.11.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.11.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.11.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.11.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.11.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.11.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.11.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.11.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.11.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.11.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.11.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.12.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.12.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.12.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.12.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.12.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.12.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.12.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.12.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.12.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.12.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.12.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.13.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.13.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.13.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.13.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.13.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.13.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.13.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.13.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.13.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.13.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.13.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.14.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.14.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.14.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.14.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.14.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.14.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.14.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.14.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.14.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.14.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.14.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.15.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.15.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.15.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.15.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.15.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.15.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.15.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.15.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.15.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.15.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.15.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.16.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.16.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.16.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.16.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.16.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.16.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.16.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.16.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.16.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.16.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.16.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.17.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.17.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.17.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.17.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.17.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.17.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.17.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.17.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.17.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.17.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.17.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.18.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.18.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.18.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.18.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.18.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.18.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.18.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.18.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.18.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.18.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.18.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.19.pre_attn_ln.scale                (1280,)                torch.float32        1280
+  stacked_xf.19.post_attn_ln.scale               (1280,)                torch.float32        1280
+  stacked_xf.19.attn.qkv_proj.weight             (3840, 1280)           torch.float32     4915200
+  stacked_xf.19.attn.out.weight                  (1280, 1280)           torch.float32     1638400
+  stacked_xf.19.attn.query_ln.scale              (80,)                  torch.float32          80
+  stacked_xf.19.attn.key_ln.scale                (80,)                  torch.float32          80
+  stacked_xf.19.attn.per_dim_scale.per_dim_scale (80,)                  torch.float32          80
+  stacked_xf.19.pre_ff_ln.scale                  (1280,)                torch.float32        1280
+  stacked_xf.19.post_ff_ln.scale                 (1280,)                torch.float32        1280
+  stacked_xf.19.ff0.weight                       (1280, 1280)           torch.float32     1638400
+  stacked_xf.19.ff1.weight                       (1280, 1280)           torch.float32     1638400
+  output_projection_point.hidden_layer.weight    (1280, 1280)           torch.float32     1638400
+  output_projection_point.output_layer.weight    (1280, 1280)           torch.float32     1638400
+  output_projection_point.residual_layer.weight  (1280, 1280)           torch.float32     1638400
+  output_projection_quantiles.hidden_layer.weight (1280, 1280)           torch.float32     1638400
+  output_projection_quantiles.output_layer.weight (10240, 1280)          torch.float32    13107200
+  output_projection_quantiles.residual_layer.weight (10240, 1280)          torch.float32    13107200
+
+  232 tensors, 231289280 scalars (231.289M)
+
+==============================================================================
+== weight-rank check: is every weight a plain nn.Linear?
+==============================================================================
+  tensors with rank > 2: (none)
+  -> no conv kernels, no FFT bases, no multi-rate filter banks
+  shape histogram:
+    (1280,)                  x 83
+    (1280, 1280)             x 65
+    (80,)                    x 60
+    (3840, 1280)             x 20
+    (1280, 64)               x 2
+    (10240, 1280)            x 2
+
+==============================================================================
+== RoPE: the only frequency axis in the architecture
+==============================================================================
+  head_dim = 80 (half = 40); heads x head_dim = 16 x 80 = 1280
+  pair split is torch.chunk(inputs, 2, dim=-1): dim i pairs with
+  dim i + head_dim/2 (NOT even/odd interleaving).
+  min_timescale = 1.0, max_timescale = 10000.0
+  period ladder (timescale is in units of ONE PATCH = 32 samples):
+    i=  0  timescale=     1.0000  period_samples=        32.00
+    i=  1  timescale=     1.2589  period_samples=        40.29
+    i=  2  timescale=     1.5849  period_samples=        50.72
+    i=  3  timescale=     1.9953  period_samples=        63.85
+    i=  4  timescale=     2.5119  period_samples=        80.38
+    i= 36  timescale=  3981.0717  period_samples=    127394.29
+    i= 37  timescale=  5011.8723  period_samples=    160379.91
+    i= 38  timescale=  6309.5734  period_samples=    201906.35
+    i= 39  timescale=  7943.2823  period_samples=    254185.04
+  log-spaced ratio per step = 1.266380
+  -> a *geometric* ladder, not a radix-2 (power-of-two) ladder.
+  attention position index = patch index (transformer.py), so RoPE
+  resolves time only to 32-sample granularity modulo that ladder.
+
+==============================================================================
+== tokenizer input/output shapes as seen at inference
+==============================================================================
+  dense.ResidualBlock: in (2, 16, 64) -> out (2, 16, 1280)
+  (2 sequences, 16 patches x 32 samples = context 512; the tokenizer sees
+   the concatenated [patch, mask] 64-vector per patch.)
+
+==============================================================================
+== full forward / decode source (module-level, for the record)
+==============================================================================
+
+------------------------------------------------------------------------------
+def TimesFM_2p5_200M_torch_module.forward:
+------------------------------------------------------------------------------
+  def forward(
+    self,
+    inputs: torch.Tensor,
+    masks: torch.Tensor,
+    decode_caches: list[util.DecodeCache] | None = None,
+  ):
+    tokenizer_inputs = torch.cat([inputs, masks.to(inputs.dtype)], dim=-1)
+    input_embeddings = self.tokenizer(tokenizer_inputs)
+
+    if decode_caches is None:
+      decode_caches = [None] * self.x
+
+    output_embeddings = input_embeddings
+    new_decode_caches = []
+    for i, layer in enumerate(self.stacked_xf):
+      output_embeddings, new_cache = layer(
+        output_embeddings, masks[..., -1], decode_caches[i]
+      )
+      new_decode_caches.append(new_cache)
+    output_ts = self.output_projection_point(output_embeddings)
+    output_quantile_spread = self.output_projection_quantiles(output_embeddings)
+
+    return (
+      input_embeddings,
+      output_embeddings,
+      output_ts,
+      output_quantile_spread,
+    ), new_decode_caches
+
+------------------------------------------------------------------------------
+def TimesFM_2p5_200M_torch_module.decode:
+------------------------------------------------------------------------------
+  def decode(self, horizon: int, inputs, masks):
+    """Decodes the time series."""
+
+    with torch.no_grad():
+      batch_size, context = inputs.shape[0], inputs.shape[1]
+      num_decode_steps = (horizon - 1) // self.o
+      num_input_patches = context // self.p
+      decode_cache_size = num_input_patches + num_decode_steps * self.m
+
+      # Prefill
+      patched_inputs = torch.reshape(inputs, (batch_size, -1, self.p))
+      patched_masks = torch.reshape(masks, (batch_size, -1, self.p))
+
+      # running stats
+      n = torch.zeros(batch_size, device=inputs.device)
+      mu = torch.zeros(batch_size, device=inputs.device)
+      sigma = torch.zeros(batch_size, device=inputs.device)
+      patch_mu = []
+      patch_sigma = []
+      for i in range(num_input_patches):
+        (n, mu, sigma), _ = util.update_running_stats(
+          n, mu, sigma, patched_inputs[:, i], patched_masks[:, i]
+        )
+        patch_mu.append(mu)
+        patch_sigma.append(sigma)
+      last_n, last_mu, last_sigma = n, mu, sigma
+      context_mu = torch.stack(patch_mu, dim=1)
+      context_sigma = torch.stack(patch_sigma, dim=1)
+
+      decode_caches = [
+        util.DecodeCache(
+          next_index=torch.zeros(batch_size, dtype=torch.int32, device=inputs.device),
+          num_masked=torch.zeros(batch_size, dtype=torch.int32, device=inputs.device),
+          key=torch.zeros(
+            batch_size,
+            decode_cache_size,
+            self.h,
+            self.hd,
+            device=inputs.device,
+          ),
+          value=torch.zeros(
+            batch_size,
+            decode_cache_size,
+            self.h,
+            self.hd,
+            device=inputs.device,
+          ),
+        )
+        for _ in range(self.x)
+      ]
+
+      normed_inputs = revin(patched_inputs, context_mu, context_sigma, reverse=False)
+      normed_inputs = torch.where(patched_masks, 0.0, normed_inputs)
+      (_, _, normed_outputs, normed_quantile_spread), decode_caches = self(
+        normed_inputs, patched_masks, decode_caches
+      )
+      renormed_outputs = torch.reshape(
+        revin(normed_outputs, context_mu, context_sigma, reverse=True),
+        (batch_size, -1, self.o, self.q),
+      )
+      renormed_quantile_spread = torch.reshape(
+        revin(normed_quantile_spread, context_mu, context_sigma, reverse=True),
+        (batch_size, -1, self.os, self.q),
+      )[:, -1, ...]
+
+      # Autogressive decode
+      ar_outputs = []
+      last_renormed_output = renormed_outputs[:, -1, :, self.aridx]
+
+      for _ in range(num_decode_steps):
+        new_patched_input = torch.reshape(
+          last_renormed_output, (batch_size, self.m, self.p)
+        )
+        new_mask = torch.zeros_like(new_patched_input, dtype=torch.bool)
+
+        n, mu, sigma = last_n, last_mu, last_sigma
+        new_mus, new_sigmas = [], []
+        for i in range(self.m):
+          (n, mu, sigma), _ = util.update_running_stats(
+            n, mu, sigma, new_patched_input[:, i], new_mask[:, i]
+          )
+          new_mus.append(mu)
+          new_sigmas.append(sigma)
+        last_n, last_mu, last_sigma = n, mu, sigma
+        new_mu = torch.stack(new_mus, dim=1)
+        new_sigma = torch.stack(new_sigmas, dim=1)
+
+        new_normed_input = revin(new_patched_input, new_mu, new_sigma, reverse=False)
+        (_, _, new_normed_output, _), decode_caches = self(
+          new_normed_input, new_mask, decode_caches
+        )
+
+        new_renormed_output = torch.reshape(
+          revin(new_normed_output, new_mu, new_sigma, reverse=True),
+          (batch_size, self.m, self.o, self.q),
+        )
+        ar_outputs.append(new_renormed_output[:, -1, ...])
+        last_renormed_output = new_renormed_output[:, -1, :, self.aridx]
+
+      if num_decode_steps > 0:
+        ar_renormed_outputs = torch.stack(ar_outputs, dim=1)
+      else:
+        ar_renormed_outputs = None
+
+    return renormed_outputs, renormed_quantile_spread, ar_renormed_outputs
+
+(dump written /home/catcat/projects/tsfm-freq-bias/experiments/13_pretrained/runs/modules_timesfm25_200m_2026-10-08.txt, 2.9s total)
