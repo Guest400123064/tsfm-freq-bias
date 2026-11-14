@@ -1,9 +1,15 @@
 # Frequency is overloaded: what TSFMs are actually doing to a signal's spectrum
 
+> **Superseded for the workshop paper (2026-10-27).** The paper is now scoped to one question:
+> do TSFMs fail on a pure tone because they memorize, or because a rule-like mechanism has an
+> unpinned token→readout mapping? See `../tsfm-gen-gap/PLAN.md` and
+> `../tsfm-gen-gap/README.md`. This document is retained as the lab's earlier frequency-bias
+> programme; the experiments and journal below remain the raw record.
+
 **Status:** working design + storyline document. The operative experiment contracts and metric
 definitions are in the appendices (§A–§C); the main body is the argument.
 
-**Run log:** `experiments/README.md`. **Sandbox:** `experiments/0_init/`.
+**Run log:** `experiments/_archive/README.md`. **Sandbox:** `experiments/_archive/0_init/`.
 
 ---
 
@@ -269,7 +275,7 @@ reviewable findings:
 
 ## 4. The argument, as a chain of killed alternatives
 
-Full numbers in `experiments/README.md`. Each step removes one explanation.
+Full numbers in `experiments/_archive/README.md`. Each step removes one explanation.
 
 ### P0 — kills "additive noise is a usable instrument"
 
@@ -443,7 +449,7 @@ is the point of T1.
 | :-- | :-- | :-- | :-- |
 | **T1** | **Measure the explaining variable**: a corpus's per-band conditional predictability `P(b)`, plus four morphology diagnostics (§6.3) | low, no training | **DONE 2026-09-16** — see the run log |
 
-**T1 outcome, and the three facts T2 must respect** (full detail in `experiments/README.md`):
+**T1 outcome, and the three facts T2 must respect** (full detail in `experiments/_archive/README.md`):
 
 - **Corpus**: `australian_electricity_demand_dataset`, 30-min resolution, 2 122 non-overlapping
   windows at `ctx + k = 544`. Chosen over `solar_10_minutes` because the 24 h clock lands inside the
@@ -733,7 +739,7 @@ total power is fixed at every β. Optimal shrinkage **`r* = exp(−β²σ²/2)`*
 | `src/fbias/probes.py` | the Appendix B metrics + `fit_oracle` |
 | `src/fbias/cli/train.py` | training loop; windows **must** be `context_size + patch_size` |
 | `experiments/<id>/scripts/`, `runs/` | driver + `state_dict` + sidecar JSON |
-| `experiments/README.md` | run log |
+| `experiments/_archive/README.md` | run log |
 
 **Config.** Development: `ctx 512 / k 32 / hidden 32 / 2L / 4 heads / SGD 1e-2 / batch 64` (both
 `ctx/k` choices give `P = 16` patches, so the frequency grid matches the lab's). Headline: the lab's

@@ -1,5 +1,6 @@
-> **Status:** draft blog post for the ICLR blog-post track. Numbers are from `experiments/README.md`;
-> the design doc is `PLAN.md`. `[FIGURE n]` marks a figure still to be made.
+> **Status:** draft blog post for the ICLR blog-post track. Numbers are from
+> `experiments/_archive/README.md`; the design doc is `PLAN.md`. `[FIGURE n]` marks a
+> figure still to be made.
 
 # "Frequency bias" is two biases
 
