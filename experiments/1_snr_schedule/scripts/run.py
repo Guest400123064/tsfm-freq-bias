@@ -86,12 +86,11 @@ def train_arm(arm, bands, powers, sigma, seed, train_x, probe, device):
     optimizer = torch.optim.SGD(model.parameters(), lr=LR)
     sampler = torch.Generator().manual_seed(seed)
     noise_gen = torch.Generator(device=device).manual_seed(5000 + seed)
+    train_x = train_x.to(device)
+    probe = probe.to(device)
     noisy_probe = probe + sigma * torch.randn(
         probe.shape, generator=noise_gen, device=device
     )
-    train_x = train_x.to(device)
-    probe = probe.to(device)
-    noisy_probe = noisy_probe.to(device)
 
     checkpoints = set(range(128, STEPS + 1, 128))
     records = []
@@ -132,11 +131,14 @@ def train_arm(arm, bands, powers, sigma, seed, train_x, probe, device):
 
 
 def main():
+    global STEPS
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", choices=("snr", "assignment"), required=True)
     parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    STEPS = args.steps
     assert torch.cuda.is_available(), "this experiment requires CUDA"
     device = torch.device("cuda")
     bands = draw_bands(args.seed)
