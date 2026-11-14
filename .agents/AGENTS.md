@@ -69,7 +69,7 @@ Keep the prose short (target: under ~300 words excluding code, tables, and figur
 
 ## Visualization
 
-- Reuse shared plotting helpers in `src/fbias/`; do not create per-experiment styles or
+- Reuse shared plotting helpers in `src/bias/`; do not create per-experiment styles or
   add plotting dependencies without a demonstrated need.
 - Use consistent figure widths: 3.25 inches for compact figures and 7 inches for
   full-width figures. Keep typography readable at final size (about 8 pt), with

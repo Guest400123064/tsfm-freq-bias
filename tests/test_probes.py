@@ -3,87 +3,63 @@ import math
 import pytest
 import torch
 
-from fbias.data import b_of, make_mixture, make_pm, make_pm_profile
-from fbias.probes import delta_k, matched_amp, phase_error, retention
+from bias.probes import delta_k, fit_oracle, matched_amp, phase_error, retention
 
 K = 32
 
 
 def test_matched_amp_pure_tone():
-    # b = 4.5 has 2b integer, so the negative-frequency image cancels exactly.
-    b, k = 4.5, K
-    t = torch.arange(k, dtype=torch.float64)
-    x = 2.5 * torch.cos(2 * math.pi * b * t / k + 0.7)
-
-    z = matched_amp(x, b, k)
+    b = 4.5
+    t = torch.arange(K, dtype=torch.float64)
+    x = 2.5 * torch.cos(2 * math.pi * b * t / K + 0.7)
+    z = matched_amp(x, b, K)
     assert z.abs().item() == pytest.approx(2.5, rel=1e-12)
     assert torch.angle(z).item() == pytest.approx(0.7, rel=1e-12)
 
 
 def test_retention_and_phase_error():
-    b, k = 4.5, K
-    t = torch.arange(k, dtype=torch.float64)
+    b = 4.5
+    t = torch.arange(K, dtype=torch.float64)
     true = torch.stack(
-        [torch.cos(2 * math.pi * b * t / k + phi) for phi in (0.0, 0.4, 2.9)]
+        [torch.cos(2 * math.pi * b * t / K + phi) for phi in (0.0, 0.4, 2.9)]
     )
-
     shrunk = 0.25 * true
-    assert torch.allclose(retention(shrunk, true, b, k), 0.25 * torch.ones(3).double())
-    assert torch.allclose(
-        phase_error(shrunk, true, b, k), torch.zeros(3, dtype=torch.float64)
-    )
+    assert torch.allclose(retention(shrunk, true, b, K), 0.25 * torch.ones(3).double())
+    assert torch.allclose(phase_error(shrunk, true, b, K), torch.zeros(3).double())
 
-    shifted = torch.cos(2 * math.pi * b * t / k + 0.3)
-    assert retention(shifted, true[0], b, k).item() == pytest.approx(1.0, rel=1e-12)
-    assert phase_error(shifted, true[0], b, k).item() == pytest.approx(0.3, rel=1e-12)
+    shifted = torch.cos(2 * math.pi * b * t / K + 0.3)
+    assert retention(shifted, true[0], b, K).item() == pytest.approx(1.0, rel=1e-12)
+    assert phase_error(shifted, true[0], b, K).item() == pytest.approx(0.3, rel=1e-12)
 
 
 def test_delta_k_is_amplitude_and_phase():
-    b, k = 4.5, K
-    t = torch.arange(k, dtype=torch.float64)
-    true = torch.cos(2 * math.pi * b * t / k)
+    b = 4.5
+    t = torch.arange(K, dtype=torch.float64)
+    true = torch.cos(2 * math.pi * b * t / K)
+    assert delta_k(0.4 * true, true, b, K).item() == pytest.approx(0.6, rel=1e-12)
 
-    # phase-locked: delta = 1 - r exactly
-    assert delta_k(0.4 * true, true, b, k).item() == pytest.approx(0.6, rel=1e-12)
+    quadrature = torch.cos(2 * math.pi * b * t / K + math.pi / 2)
+    assert delta_k(quadrature, true, b, K).item() == pytest.approx(
+        math.sqrt(2), rel=1e-12
+    )
 
-    # same amplitude, quarter turn: |e^{i pi/2} - 1| = sqrt(2)
-    quad = torch.cos(2 * math.pi * b * t / k + math.pi / 2)
-    assert delta_k(quad, true, b, k).item() == pytest.approx(math.sqrt(2), rel=1e-12)
-
-    # the identity the report relies on, on a random amplitude and phase
-    pred = 0.7 * torch.cos(2 * math.pi * b * t / k + 0.9)
-    r = retention(pred, true, b, k).item()
-    dphi = phase_error(pred, true, b, k).item()
-    assert delta_k(pred, true, b, k).item() == pytest.approx(
+    pred = 0.7 * torch.cos(2 * math.pi * b * t / K + 0.9)
+    r = retention(pred, true, b, K).item()
+    dphi = phase_error(pred, true, b, K).item()
+    assert delta_k(pred, true, b, K).item() == pytest.approx(
         math.sqrt(1 + r**2 - 2 * r * math.cos(dphi)), rel=1e-12
     )
 
 
-def test_make_mixture_spacing():
-    # b = 0.125 and 0.1875, i.e. 0.0625 cycles/patch apart.
-    with pytest.raises(AssertionError, match="cycles/patch"):
-        make_mixture([2.0, 3.0], 4, 512, K, 0)
+def test_fit_oracle_recovers_linear_readout():
+    gen = torch.Generator().manual_seed(0)
+    z_fit = torch.randn(16, 5, 4, generator=gen)
+    z_eval = torch.randn(8, 5, 4, generator=gen)
+    weights = torch.randn(4, 3, generator=gen)
+    bias = torch.randn(3, generator=gen)
+    target_fit = torch.zeros(16, 5, 3)
+    target_fit[:, 1:] = z_fit[:, :-1] @ weights + bias
 
-    # Exactly 1 cycle/patch apart is allowed.
-    x = make_mixture([2.0, 18.0], 4, 512, K, 0)
-    assert x.shape == (4, 512 + K)
-    assert b_of(18.0, K, 512) - b_of(2.0, K, 512) == 1.0
-
-
-def test_make_pm_profile_power_and_flat_case():
-    # f = 16 and 32 cycles per 512 samples are b = 1 and b = 2 at k = 32.
-    freqs = torch.tensor([16.0, 32.0])
-    powers = torch.tensor([0.4, 0.1])
-    x, _ = make_pm_profile(freqs, powers, [0.0, 0.0], 8, 512, K, 0)
-    assert x.square().mean().item() == pytest.approx(0.5, rel=1e-5)
-
-    for j, b in enumerate((1.0, 2.0)):
-        z = matched_amp(x.unfold(1, K, K), b, K)
-        assert (z.abs() ** 2 / 2).mean().item() == pytest.approx(
-            powers[j].item(), rel=1e-4
-        )
-
-    # Flat power is make_pm: same windows, bit for bit.
-    maybe = torch.tensor([0.3, 0.0])
-    flat = make_pm_profile(freqs, [0.25, 0.25], maybe, 4, 512, K, 1)
-    assert torch.equal(make_pm(freqs, maybe, 4, 512, K, 1)[0], flat[0])
+    pred = fit_oracle(z_fit, target_fit, z_eval, ridge=1e-8)
+    expected = z_eval[:, :-1] @ weights + bias
+    assert torch.allclose(pred, expected, atol=1e-4, rtol=1e-4)
