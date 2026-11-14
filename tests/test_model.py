@@ -50,3 +50,15 @@ def test_training_window_has_target_for_last_position():
     pred, _, z = model(x)
     assert z.shape == (2, CTX // PATCH + 1, 16)
     assert pred[:, :-1].shape == model.pat(x)[:, 1:].shape
+
+
+def test_predict_next_ignores_held_out_target():
+    model = tiny_model()
+    x = torch.randn(2, CTX + PATCH)
+    pred, target = model.predict_next(x)
+    changed = x.clone()
+    changed[:, -PATCH:] = torch.randn_like(changed[:, -PATCH:])
+    changed_pred, changed_target = model.predict_next(changed)
+
+    assert torch.equal(pred, changed_pred)
+    assert not torch.equal(target, changed_target)

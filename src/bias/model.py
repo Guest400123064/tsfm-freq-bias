@@ -77,6 +77,12 @@ class SimTFM(nn.Module):
         h = self.agg(z, mask=mask)
         return self.lm_head(h), h, z
 
+    def predict_next(self, x):
+        """Predict the patch after the context and return its observed target."""
+        target = self.pat(x)[:, -1]
+        pred = self(x[:, : self.context_size])[0][:, -1]
+        return pred, target
+
     def rollout(self, x, num_patches=1):
         """Forecast patches autoregressively, returning (B, num_patches, k)."""
         self.eval()

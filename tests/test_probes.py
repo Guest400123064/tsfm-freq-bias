@@ -3,7 +3,13 @@ import math
 import pytest
 import torch
 
-from bias.probes import delta_k, fit_oracle, matched_amp, phase_error, retention
+from bias.probes import (
+    band_coefficients,
+    delta_k,
+    matched_amp,
+    phase_error,
+    retention,
+)
 
 K = 32
 
@@ -51,15 +57,13 @@ def test_delta_k_is_amplitude_and_phase():
     )
 
 
-def test_fit_oracle_recovers_linear_readout():
-    gen = torch.Generator().manual_seed(0)
-    z_fit = torch.randn(16, 5, 4, generator=gen)
-    z_eval = torch.randn(8, 5, 4, generator=gen)
-    weights = torch.randn(4, 3, generator=gen)
-    bias = torch.randn(3, generator=gen)
-    target_fit = torch.zeros(16, 5, 3)
-    target_fit[:, 1:] = z_fit[:, :-1] @ weights + bias
-
-    pred = fit_oracle(z_fit, target_fit, z_eval, ridge=1e-8)
-    expected = z_eval[:, :-1] @ weights + bias
-    assert torch.allclose(pred, expected, atol=1e-4, rtol=1e-4)
+def test_band_coefficients_recovers_dense_tones():
+    k = 64
+    bands = torch.linspace(0.25, 31.75, 32, dtype=torch.float64)
+    torch.manual_seed(0)
+    z = torch.randn(5, len(bands), dtype=torch.float64) + 1j * torch.randn(
+        5, len(bands), dtype=torch.float64
+    )
+    angles = 2 * math.pi * bands[:, None] * torch.arange(k, dtype=torch.float64) / k
+    x = torch.real(z[:, :, None] * torch.exp(1j * angles)).sum(dim=1)
+    assert torch.allclose(band_coefficients(x, bands, k), z, atol=1e-12)

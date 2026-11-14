@@ -1,7 +1,15 @@
 # Experiments
 
-Maintained experiments will be added here as `<NN>_<slug>` groups during the blog
-refactor. Each group will contain a README, Makefile, scripts, outputs, and figures.
+## Maintained experiments
+
+- [`0_power_schedule`](0_power_schedule/): dense-spectrum power ladder and
+  per-band learning curves.
+- [`1_snr_schedule`](1_snr_schedule/): white-noise dose response and red/anti-red
+  power-frequency assignments. Scaffolded, not yet run.
+- [`2_map_complexity`](2_map_complexity/): Fourier-harmonic circle-map complexity
+  sweep. Design only; not yet implemented.
+
+Each group contains a README, Makefile, scripts, outputs, and figures.
 
 The exploratory run log and all previous experiment directories are preserved under
 [`_archive/`](_archive/) for reference. They are not maintained reproduction targets.
