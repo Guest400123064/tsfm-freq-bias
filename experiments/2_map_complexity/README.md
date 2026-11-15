@@ -70,6 +70,40 @@ sideband fractions. The autonomous generalized circle map used here does not: it
 nonlinear term feeds back into the phase, so there is no exact `J_n(β)` decomposition.
 The pilot measures the realized spectrum instead.
 
+### Which complexity is controlled
+
+The intervention is on the **latent phase-transition map**:
+
+\[
+F_m:\theta_t\mapsto\theta_{t+1}
+\]
+
+Its Fourier series in `θ` has exactly `m` nonlinear harmonics. This is the formal
+complexity axis.
+
+It is not yet the function the model sees. There are three nested objects:
+
+1. `F_m(θ)`: the latent map; exactly `m` harmonics.
+2. `G_m(θ)=cos(F_m(θ))`: the next observable sample as a function of current phase.
+   This is generally **not** `m`-sparse. For `m=1`, Jacobi–Anger already gives
+   \(e^{i\beta\sin\theta}=\sum_n J_n(\beta)e^{in\theta}\), so the observed function
+   has infinitely many coupled sidebands.
+3. `H_m: (x_{t-L+1},...,x_t) \mapsto x_{t+1}`: the full history-to-next map that the
+   model learns. It composes phase inference, `F_m`, and the observation function; it
+   has no canonical `m`-term Fourier decomposition in the ambient `R^L` coordinates.
+
+So circle maps are chosen for **control**, not because `m` is the Fourier rank of the
+ambient target function: constant envelope fixes power, one scalar phase fixes the
+intrinsic state dimension, and `m` changes the latent one-step rule. The induced
+observable complexity is measured, not assumed. A linear mixture of pure tones would
+instead add independent oscillators, changing state dimension and spectral support
+along with the target.
+
+`G_m` can be used as a diagnostic link between `F_m` and the observed next sample: its
+Fourier/Bessel components show how a sparse latent map becomes a spectrally dense
+observable function. It is not the full target map, because the model does not observe
+`θ` directly.
+
 ## Data pilot
 
 ![data pilot](figs/data_pilot.png)

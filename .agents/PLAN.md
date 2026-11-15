@@ -72,6 +72,11 @@ the learning curves have plateaued.
   does not make a cross-carrier invariance claim.
 - Circle maps do not obey the external-PM Bessel decomposition. Measure realized
   bandwidth and entropy rather than assuming sideband fractions.
+- The treatment is the latent map `F_m: θ_t→θ_{t+1}`, whose Fourier series has exactly
+  `m` harmonics. The observable map `G_m(θ)=cos(F_m(θ))` is generally dense, and the
+  full history-to-next map `H_m` also contains phase inference. We therefore claim
+  control of latent map order, not ambient `R^L` Fourier rank; circle maps are chosen
+  for power and state-dimension control.
 - Result: nonlinear maps are slower than the pure rotation, but the nonlinear ordering
   is not monotone. `m=2` is on average slowest; `m=3` is faster for two of three
   harmonic-phase realizations. All arms still improve at 32k, so this is not a

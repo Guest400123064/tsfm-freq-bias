@@ -22,6 +22,42 @@ A second distinction cuts across all three: **schedule** versus **floor**. A ban
 be learned more slowly without having a worse asymptotic error. The blog reports
 learning curves and time-to-threshold, not only terminal error.
 
+## Transition: signal frequency is not map complexity
+
+Take one pure tone:
+
+\[
+x_t=\cos(\omega t+\phi).
+\]
+
+The waveform is nonlinear in time and phase, but its one-step forecast is a fixed
+**linear functional** of the last two samples:
+
+\[
+x_{t+1}=2\cos\omega\,x_t-x_{t-1}.
+\]
+
+The `cos` belongs to the observation/generative constraint that places the data on a
+two-dimensional linear state space. It is not a nonlinear operation on the forecasting
+input. `2cosω` is a constant coefficient for a fixed tone.
+
+For `K` known tones, the same argument gives an order-`2K` linear recurrence:
+
+\[
+x_{t+1}=\sum_{j=1}^{2K}a_j x_{t-j+1}.
+\]
+
+Different carrier frequencies change the coefficients and rotation angle, not the
+function class: each fixed frequency support admits a linear forecast map. If the
+frequency set varies across windows, there is no single global linear functional; the
+target is then a conditional family indexed by the latent frequency state. That
+qualification matters, but it does not turn signal frequency into map frequency.
+
+A nonlinear circle map changes the recurrence itself. Then the next value is no longer
+a fixed linear functional of the observed history, and the target-map function class
+becomes a separate object from the carrier spectrum. That is the object manipulated in
+the map-complexity experiment.
+
 ## What the literature measures
 
 ### Classical spectral bias
@@ -93,8 +129,11 @@ Those are different physical variables and should be measured separately.
 
 - The controlled evidence is from a small `SimTFM`; the blog should not silently
   generalize every number to production TSFMs.
-- The map-complexity experiment is fixed-carrier. It does not claim cross-carrier
-  invariance; that is handled by the power and SNR experiments.
+- The map-complexity experiment is fixed-carrier. Its treatment is the Fourier order of
+  the latent phase map `F_m`, not the Fourier rank of the ambient history-to-next
+  function. The observable map adds phase inference and a nonlinear observation
+  function. It does not claim cross-carrier invariance; that is handled by the power
+  and SNR experiments.
 - The SNR experiment still needs a scale-matched noiseless control.
 - An illustrative real-data projection can combine the measured corpus spectrum with a
   noise floor and the synthetic power-scaling exponent. It is an extrapolation, not a
