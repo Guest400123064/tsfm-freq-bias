@@ -1,6 +1,6 @@
-> **Status:** draft blog post for the ICLR blog-post track. Numbers are from
-> `experiments/_archive/README.md`; the design doc is `PLAN.md`. `[FIGURE n]` marks a
-> figure still to be made.
+> **Status:** earlier draft. It predates the current three-axis programme and is retained
+> for reference only. The active plan is `.agents/PLAN.md`; current positioning,
+> related work, and the working storyline are in `docs/README.md`.
 
 # "Frequency bias" is two biases
 

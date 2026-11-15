@@ -8,6 +8,7 @@ from bias.data import (
     circle_rule,
     make_coeff_recurrence,
     make_mixture,
+    make_phase_map,
     make_pm_profile,
 )
 from bias.probes import matched_amp
@@ -49,3 +50,14 @@ def test_coeff_recurrence_preserves_power_and_rule():
         z = matched_amp(patches, b, K)
         assert (z.abs() ** 2 / 2).mean().item() == pytest.approx(powers[j], rel=1e-4)
         assert torch.allclose(z[:, 1:], rule(z[:, :-1]), atol=2e-6, rtol=2e-6)
+
+
+def test_phase_map_power_and_zero_beta():
+    bands = [0.5, 1.5, 2.5, 3.5]
+    x = make_phase_map(bands, [0, 1, 2, 3], 0.1, 16, 512, 16, 0)
+    assert x.shape == (16, 528)
+    assert x.square().mean().item() == pytest.approx(0.5, rel=0.02)
+
+    pure = make_phase_map(bands, [0, 0, 0, 0], 0.1, 4, 512, 16, 3)
+    zero = make_phase_map(bands, [1, 2, 3, 0], 0.0, 4, 512, 16, 3)
+    assert torch.equal(pure, zero)

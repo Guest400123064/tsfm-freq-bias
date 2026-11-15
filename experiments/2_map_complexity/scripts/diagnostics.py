@@ -1,0 +1,159 @@
+import argparse
+import json
+import math
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import torch
+
+from bias.data import make_phase_map
+
+K = 16
+CARRIER = 1.0
+BETA = 0.1
+LEVELS = (0, 1, 2, 3)
+SEED = 2027
+N_SPEC = 16_384
+
+plt.rcParams.update(
+    {
+        "font.family": "sans-serif",
+        "font.size": 8,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.15,
+        "figure.facecolor": "white",
+    }
+)
+
+
+def harmonic_phases():
+    gen = torch.Generator().manual_seed(SEED)
+    torch.rand((1, 1), generator=gen)
+    return 2 * math.pi * torch.rand((1, len(LEVELS) - 1), generator=gen)[0]
+
+
+def phase_map_diagnostics(level, phases):
+    if level == 0:
+        return {"min_derivative": 1.0, "phase_rms": 0.0}
+    theta = torch.linspace(0, 2 * math.pi, 2048)
+    gamma = BETA * math.sqrt(2 / level)
+    nonlinear = sum(
+        gamma * torch.sin(k * theta + phases[k - 1]) for k in range(1, level + 1)
+    )
+    derivative = 1 + sum(
+        k * gamma * torch.cos(k * theta + phases[k - 1]) for k in range(1, level + 1)
+    )
+    return {
+        "min_derivative": float(derivative.min()),
+        "phase_rms": float(nonlinear.square().mean().sqrt()),
+    }
+
+
+def spectral_diagnostics(x):
+    spectrum = torch.fft.rfft(x)
+    power = spectrum.abs().square()
+    probability = power / power.sum()
+    entropy = float(
+        -(probability[probability > 0] * probability[probability > 0].log()).sum()
+        / math.log(len(probability))
+    )
+    frequency = torch.fft.rfftfreq(len(x), d=1 / K)
+    distance = (frequency - CARRIER).abs()
+    order = torch.argsort(distance)
+    cumulative = torch.cumsum(power[order], dim=0) / power.sum()
+    index = int(torch.searchsorted(cumulative, torch.tensor(0.95)))
+    return {
+        "spectral_entropy": entropy,
+        "occupied_bandwidth_95": float(2 * distance[order[index]]),
+        "power_outside_carrier_bin": float(
+            1 - power[(frequency - CARRIER).abs() <= 2 * K / len(x)].sum() / power.sum()
+        ),
+        "frequency": frequency,
+        "power": power,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--fig", type=Path, required=True)
+    args = parser.parse_args()
+    phases = harmonic_phases()
+    rows = []
+    colors = plt.get_cmap("viridis")(torch.linspace(0, 0.85, len(LEVELS)).numpy())
+
+    fig, axes = plt.subplots(1, 3, figsize=(7, 2.55), constrained_layout=True)
+    for color, level in zip(colors, LEVELS, strict=True):
+        x = make_phase_map([CARRIER], [level], BETA, 1, N_SPEC, K, SEED)[0]
+        spec = spectral_diagnostics(x)
+        diagnostics = {
+            "level": level,
+            **phase_map_diagnostics(level, phases),
+            "spectral_entropy": spec["spectral_entropy"],
+            "occupied_bandwidth_95": spec["occupied_bandwidth_95"],
+            "power_outside_carrier_bin": spec["power_outside_carrier_bin"],
+            "rms": float(x.square().mean().sqrt()),
+        }
+        rows.append(diagnostics)
+
+        time = torch.arange(256)
+        axes[0].plot(
+            time,
+            x[:256] + (len(LEVELS) - 1 - level) * 2.1,
+            color=color,
+            lw=0.9,
+        )
+        axes[0].text(
+            2,
+            (len(LEVELS) - 1 - level) * 2.1,
+            f"m={level}",
+            ha="left",
+            va="center",
+            fontsize=7,
+        )
+
+        theta = torch.linspace(0, 2 * math.pi, 512)
+        derivative = torch.ones_like(theta)
+        for k in range(1, level + 1):
+            gamma = BETA * math.sqrt(2 / level)
+            derivative += k * gamma * torch.cos(k * theta + phases[k - 1])
+        axes[1].plot(theta, derivative, color=color, lw=1.2, label=f"m={level}")
+
+        mask = spec["frequency"] <= 4
+        axes[2].plot(
+            spec["frequency"][mask],
+            10 * torch.log10(spec["power"][mask] / spec["power"].max()),
+            color=color,
+            lw=1.0,
+            label=f"m={level}",
+        )
+
+    axes[0].set(
+        xlabel="Time (samples)",
+        yticks=[],
+        title="(a) Waveforms",
+        xlim=(0, 255),
+    )
+    axes[1].set(
+        xlabel="Phase θ",
+        ylabel="θ(t+1) - θ(t) derivative",
+        title="(b) Phase maps",
+    )
+    axes[1].legend(frameon=False, fontsize=6)
+    axes[2].set(
+        xlabel="Frequency (cycles/patch)",
+        ylabel="Power (dB)",
+        title="(c) Spectra",
+        xlim=(0, 4),
+    )
+    fig.savefig(args.fig, dpi=300)
+
+    args.output.write_text(json.dumps(rows, indent=2) + "\n")
+    for row in rows:
+        print(row)
+
+
+if __name__ == "__main__":
+    main()

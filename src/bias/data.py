@@ -69,6 +69,51 @@ def make_pm_profile(freqs, powers, betas, n_per, ctx, k, seed):
     return x, unpredictable
 
 
+def make_phase_map(bands, levels, beta, n_per, ctx, k, seed):
+    """Generate constant-envelope phase oscillators with generalized circle maps.
+
+    ``levels[i]`` is the number of harmonics in carrier ``i``'s phase update. Each
+    harmonic receives coefficient ``beta * sqrt(2 / levels[i])`` so the RMS phase
+    modulation is ``beta`` at every level. Each window is RMS-normalized to total
+    power 0.5, because a circle map's invariant phase density need not be uniform.
+    """
+    bands = torch.as_tensor(bands, dtype=torch.float64).flatten()
+    levels = torch.as_tensor(levels, dtype=torch.long).flatten()
+    assert levels.numel() == bands.numel()
+    assert (ctx + k) % k == 0
+    max_level = int(levels.max())
+    n, n_bands = int(n_per), bands.numel()
+    amp = math.sqrt(1.0 / n_bands)
+    omega = 2 * math.pi * bands / k
+    gamma = torch.where(
+        levels > 0,
+        beta * torch.sqrt(2 / levels.clamp(min=1).double()),
+        torch.zeros_like(levels, dtype=torch.float64),
+    )
+
+    gen = torch.Generator().manual_seed(seed)
+    theta = 2 * math.pi * torch.rand((n, n_bands), generator=gen, dtype=torch.float64)
+    harmonic_phase = (
+        2
+        * math.pi
+        * torch.rand((n_bands, max_level), generator=gen, dtype=torch.float64)
+    )
+    x = torch.zeros((n, ctx + k), dtype=torch.float64)
+    for t in range(ctx + k):
+        x[:, t] = amp * torch.cos(theta).sum(dim=-1)
+        increment = omega.expand(n, n_bands).clone()
+        for harmonic in range(1, max_level + 1):
+            active = (levels >= harmonic).double()
+            increment += (
+                active
+                * gamma
+                * torch.sin(harmonic * theta + harmonic_phase[:, harmonic - 1])
+            )
+        theta = theta + increment
+    x *= math.sqrt(0.5) / x.square().mean(dim=1, keepdim=True).sqrt()
+    return x.float()
+
+
 def circle_rule(omega, gamma):
     """Return z -> z exp(i(omega + gamma sin(arg z))), preserving |z|."""
     omega, gamma = float(omega), float(gamma)

@@ -7,7 +7,7 @@
 - [`1_snr_schedule`](1_snr_schedule/): white-noise dose response and red/anti-red
   power-frequency assignments, with clean and noisy probes.
 - [`2_map_complexity`](2_map_complexity/): Fourier-harmonic circle-map complexity
-  sweep. Design only; not yet implemented.
+  sweep with data pilot and training smoke complete.
 
 Each group contains a README, Makefile, scripts, outputs, and figures.
 
