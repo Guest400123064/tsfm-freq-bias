@@ -69,13 +69,15 @@ def make_pm_profile(freqs, powers, betas, n_per, ctx, k, seed):
     return x, unpredictable
 
 
-def make_phase_map(bands, levels, beta, n_per, ctx, k, seed):
+def make_phase_map(bands, levels, beta, n_per, ctx, k, seed, map_seed=None):
     """Generate constant-envelope phase oscillators with generalized circle maps.
 
     ``levels[i]`` is the number of harmonics in carrier ``i``'s phase update. Each
     harmonic receives coefficient ``beta * sqrt(2 / levels[i])`` so the RMS phase
-    modulation is ``beta`` at every level. Each window is RMS-normalized to total
-    power 0.5, because a circle map's invariant phase density need not be uniform.
+    modulation is ``beta`` at every level. ``map_seed`` controls the fixed harmonic
+    phases; train and probe corpora must share it. ``seed`` controls window phases.
+    Each window is RMS-normalized to total power 0.5, because a circle map's invariant
+    phase density need not be uniform.
     """
     bands = torch.as_tensor(bands, dtype=torch.float64).flatten()
     levels = torch.as_tensor(levels, dtype=torch.long).flatten()
@@ -91,12 +93,14 @@ def make_phase_map(bands, levels, beta, n_per, ctx, k, seed):
         torch.zeros_like(levels, dtype=torch.float64),
     )
 
+    map_seed = seed if map_seed is None else map_seed
     gen = torch.Generator().manual_seed(seed)
+    map_gen = torch.Generator().manual_seed(map_seed)
     theta = 2 * math.pi * torch.rand((n, n_bands), generator=gen, dtype=torch.float64)
     harmonic_phase = (
         2
         * math.pi
-        * torch.rand((n_bands, max_level), generator=gen, dtype=torch.float64)
+        * torch.rand((n_bands, max_level), generator=map_gen, dtype=torch.float64)
     )
     x = torch.zeros((n, ctx + k), dtype=torch.float64)
     for t in range(ctx + k):

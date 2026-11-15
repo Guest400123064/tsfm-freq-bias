@@ -3,7 +3,7 @@ SEEDS ?= 0 1 2
 PARTS = $(SEEDS:%=outputs/map_s%.json)
 
 .PHONY: all data smoke clean
-all: outputs/map.json
+all: outputs/map.json figs/map.png
 data: outputs/data_pilot.json figs/data_pilot.png
 smoke: outputs/smoke.json
 
@@ -20,6 +20,9 @@ outputs/map.json: scripts/merge.py $(PARTS)
 
 outputs/smoke.json: scripts/run.py | outputs
 	OMP_NUM_THREADS=2 $(PYTHON) $< --seed 0 --steps 256 --output $@
+
+figs/map.png: scripts/plot.py outputs/map.json | figs
+	$(PYTHON) $< --input outputs/map.json --output $@
 
 outputs figs:
 	mkdir -p $@

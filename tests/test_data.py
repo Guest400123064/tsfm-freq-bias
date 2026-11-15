@@ -61,3 +61,15 @@ def test_phase_map_power_and_zero_beta():
     pure = make_phase_map(bands, [0, 0, 0, 0], 0.1, 4, 512, 16, 3)
     zero = make_phase_map(bands, [1, 2, 3, 0], 0.0, 4, 512, 16, 3)
     assert torch.equal(pure, zero)
+
+
+def test_phase_map_shares_map_parameters():
+    bands = [0.5, 2.5, 4.5, 6.5]
+    levels = [1, 2, 3, 1]
+    short = make_phase_map(bands, levels, 0.1, 1, 512, 16, 7, 11)
+    long = make_phase_map(bands, levels, 0.1, 1, 1024, 16, 7, 11)
+    different = make_phase_map(bands, levels, 0.1, 1, 512, 16, 7, 12)
+    short = short / short.square().mean().sqrt()
+    long = long[:, :528] / long[:, :528].square().mean().sqrt()
+    assert torch.allclose(short, long, atol=1e-6)
+    assert not torch.equal(short, different / different.square().mean().sqrt())

@@ -83,8 +83,9 @@ Those are different physical variables and should be measured separately.
    schedule; swapping which frequencies are loud leaves matched power levels almost
    unchanged.
 3. A separate map-complexity experiment with fixed carriers, fixed total power, and a
-   single scalar phase state per carrier. Harmonic order changes while the state
-   dimension does not.
+   single scalar phase state per carrier. Nonlinear maps are slower than a pure
+   rotation, but harmonic count is not a monotone difficulty scale: map realization
+   matters, and `m=2` is on average slower than `m=3`.
 4. A vocabulary and evaluation protocol: report signal spectrum, effective power/SNR,
    map complexity, schedule, and floor as different quantities.
 

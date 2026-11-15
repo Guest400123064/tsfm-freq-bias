@@ -30,7 +30,6 @@ plt.rcParams.update(
 
 def harmonic_phases():
     gen = torch.Generator().manual_seed(SEED)
-    torch.rand((1, 1), generator=gen)
     return 2 * math.pi * torch.rand((1, len(LEVELS) - 1), generator=gen)[0]
 
 

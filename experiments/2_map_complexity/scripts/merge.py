@@ -12,7 +12,11 @@ def main():
     parts = [json.loads(path.read_text()) for path in args.inputs]
     config = parts[0]["config"]
     config["seeds"] = [part["config"]["seed"] for part in parts]
-    arms = [arm for part in parts for arm in part["arms"]]
+    arms = [
+        {**arm, "seed": part["config"]["seed"]}
+        for part in parts
+        for arm in part["arms"]
+    ]
     args.output.write_text(
         json.dumps({"config": config, "arms": arms}, indent=2) + "\n"
     )

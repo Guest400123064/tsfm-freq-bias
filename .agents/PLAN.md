@@ -37,7 +37,7 @@ the learning curves have plateaued.
 | --- | --- | --- | --- |
 | `0_power_schedule` | does assigned power set the learning schedule? | complete | final `Δk` Spearman `−0.992` with log power, `−0.090` with frequency; `t ∝ P^-1.083`, `R²=0.999` |
 | `1_snr_schedule` | does white noise slow learning, and is high frequency only a proxy for low SNR? | complete | `t(Δk≤0.5)` rises 723 → 3,119 steps as noise/signal RMS rises 0→1; red and anti-red level curves almost coincide |
-| `2_map_complexity` | does nonlinear phase-map order alone change the schedule? | full 12-model run in progress | data pilot and smoke pass; fixed 4 carriers, `β=0.1`, `m=0..3` |
+| `2_map_complexity` | does nonlinear phase-map order alone change the schedule? | complete | nonlinear maps slower than pure rotation, but `m` is not monotone: mean `t(NMSE≤0.1)` is 256 / 512 / 1,365 / 896 for `m=0..3`; map realization dominates |
 
 ### Group 0 details
 
@@ -72,11 +72,18 @@ the learning curves have plateaued.
   does not make a cross-carrier invariance claim.
 - Circle maps do not obey the external-PM Bessel decomposition. Measure realized
   bandwidth and entropy rather than assuming sideband fractions.
+- Result: nonlinear maps are slower than the pure rotation, but the nonlinear ordering
+  is not monotone. `m=2` is on average slowest; `m=3` is faster for two of three
+  harmonic-phase realizations. All arms still improve at 32k, so this is not a
+  converged-floor result.
+- The useful claim is therefore “map nonlinearity carries a learning cost; harmonic
+  count alone is not a scalar complexity ordering.”
 
 ## Immediate work
 
-1. Finish the group-2 run; build learning-curve and time-to-threshold plots.
-2. Decide whether `m` effects are schedule-only or retain a higher final floor.
+1. For group 2, decide whether to add more harmonic-phase realizations or define a
+   realized-map complexity statistic. Do not present `m` as a monotone ordering.
+2. Build the group-2 blog figure around seed variability and the non-monotone result.
 3. Add the scale-matched noiseless control for SNR before making a strong causal noise
    claim.
 4. Re-run group 0 with early checkpoints for an unbiased scaling exponent.

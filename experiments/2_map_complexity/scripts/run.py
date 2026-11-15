@@ -74,7 +74,7 @@ def train_arm(level, seed, train_x, probe, device, steps):
                     f"elapsed={time.perf_counter() - started:.1f}s",
                     flush=True,
                 )
-    return {"level": level, "records": records}
+    return {"seed": seed, "level": level, "records": records}
 
 
 def main():
@@ -88,11 +88,26 @@ def main():
 
     arms = []
     for level in LEVELS:
+        map_seed = 3000 + args.seed
         train_x = make_phase_map(
-            BANDS, [level] * len(BANDS), BETA, N_TRAIN, CTX, PATCH, 1000 + args.seed
+            BANDS,
+            [level] * len(BANDS),
+            BETA,
+            N_TRAIN,
+            CTX,
+            PATCH,
+            1000 + args.seed,
+            map_seed,
         )
         probe = make_phase_map(
-            BANDS, [level] * len(BANDS), BETA, N_PROBE, CTX, PATCH, 2000 + args.seed
+            BANDS,
+            [level] * len(BANDS),
+            BETA,
+            N_PROBE,
+            CTX,
+            PATCH,
+            2000 + args.seed,
+            map_seed,
         )
         arms.append(train_arm(level, args.seed, train_x, probe, device, args.steps))
 
