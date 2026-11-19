@@ -7,7 +7,8 @@
 - [`1_snr_schedule`](1_snr_schedule/): white-noise dose response and red/anti-red
   power-frequency assignments, with clean and noisy probes.
 - [`2_map_complexity`](2_map_complexity/): Fourier-harmonic circle-map complexity
-  sweep. Nonlinear maps slow learning, but harmonic count is not monotone.
+  sweep. Nonlinear maps slow learning, and the slowdown grows with harmonic order in
+  the no-lock regime.
 
 Each group contains a README, Makefile, scripts, outputs, and figures.
 

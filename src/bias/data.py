@@ -77,7 +77,8 @@ def make_phase_map(bands, levels, beta, n_per, ctx, k, seed, map_seed=None):
     modulation is ``beta`` at every level. ``map_seed`` controls the fixed harmonic
     phases; train and probe corpora must share it. ``seed`` controls window phases.
     Each window is RMS-normalized to total power 0.5, because a circle map's invariant
-    phase density need not be uniform.
+    phase density need not be uniform. Asserts that every carrier's phase velocity
+    ``omega + g(theta)`` stays positive, so no carrier locks.
     """
     bands = torch.as_tensor(bands, dtype=torch.float64).flatten()
     levels = torch.as_tensor(levels, dtype=torch.long).flatten()
@@ -101,6 +102,16 @@ def make_phase_map(bands, levels, beta, n_per, ctx, k, seed, map_seed=None):
         2
         * math.pi
         * torch.rand((n_bands, max_level), generator=map_gen, dtype=torch.float64)
+    )
+    grid = torch.linspace(0, 2 * math.pi, 4096, dtype=torch.float64)
+    advance = omega[:, None] + sum(
+        (levels >= harmonic).double()[:, None]
+        * gamma[:, None]
+        * torch.sin(harmonic * grid + harmonic_phase[:, harmonic - 1, None])
+        for harmonic in range(1, max_level + 1)
+    )
+    assert bool((advance > 0).all()), (
+        f"phase locks: min advance {advance.min(dim=1).values.tolist()}"
     )
     x = torch.zeros((n, ctx + k), dtype=torch.float64)
     for t in range(ctx + k):

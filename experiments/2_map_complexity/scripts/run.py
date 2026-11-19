@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from bias.data import make_phase_map
 from bias.model import SimTFM
 
-BANDS = (0.5, 2.5, 4.5, 6.5)
+BANDS = (2.5, 4.5, 6.5)
 LEVELS = (0, 1, 2, 3)
 BETA = 0.1
 CTX = 512

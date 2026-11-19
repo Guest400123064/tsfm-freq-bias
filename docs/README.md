@@ -108,7 +108,9 @@ Those are different physical variables and should be measured separately.
    clean input where shrinking is wrong.
 4. **Carrier frequency from the actual spectrum after modulation.** Once a signal is
    phase- or amplitude-modulated, its power is not localized at a single carrier. A
-   "carrier" parameter is not the same object as the dominant signal frequency.
+   "carrier" parameter is not the same object as the dominant signal frequency. In an
+   autonomous phase map, the realized rotation number can even be zero (phase locking)
+   when the modulation peak exceeds the base frequency.
 
 ## What this project contributes
 
@@ -120,8 +122,8 @@ Those are different physical variables and should be measured separately.
    unchanged.
 3. A separate map-complexity experiment with fixed carriers, fixed total power, and a
    single scalar phase state per carrier. Nonlinear maps are slower than a pure
-   rotation, but harmonic count is not a monotone difficulty scale: map realization
-   matters, and `m=2` is on average slower than `m=3`.
+   rotation, and the slowdown is largest at the highest order in the no-lock regime:
+   `m=0` is fastest and `m=3` slowest, while `m=1` and `m=2` are close.
 4. A vocabulary and evaluation protocol: report signal spectrum, effective power/SNR,
    map complexity, schedule, and floor as different quantities.
 

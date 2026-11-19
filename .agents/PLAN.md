@@ -37,7 +37,7 @@ the learning curves have plateaued.
 | --- | --- | --- | --- |
 | `0_power_schedule` | does assigned power set the learning schedule? | complete | final `Δk` Spearman `−0.992` with log power, `−0.090` with frequency; `t ∝ P^-1.083`, `R²=0.999` |
 | `1_snr_schedule` | does white noise slow learning, and is high frequency only a proxy for low SNR? | complete | `t(Δk≤0.5)` rises 723 → 3,119 steps as noise/signal RMS rises 0→1; red and anti-red level curves almost coincide |
-| `2_map_complexity` | does nonlinear phase-map order alone change the schedule? | complete | nonlinear maps slower than pure rotation, but `m` is not monotone: mean `t(NMSE≤0.1)` is 256 / 512 / 1,365 / 896 for `m=0..3`; map realization dominates |
+| `2_map_complexity` | does nonlinear phase-map order alone change the schedule? | complete | nonlinear maps slower than pure rotation; final variance monotone in `m` (0.9997 / 0.9994 / 0.9989 / 0.9964); `m=0` vs `m=3` separated at `t(NMSE≤0.02)`, `m=1`/`m=2` close |
 
 ### Group 0 details
 
@@ -63,7 +63,11 @@ the learning curves have plateaued.
 
 ### Group 2 details
 
-- Four fixed carriers `{0.5, 2.5, 4.5, 6.5}`, `k=16`, `ctx=512`, `H=64`, two layers.
+- Three fixed carriers `{2.5, 4.5, 6.5}`, `k=16`, `ctx=512`, `H=64`, two layers.
+  The earlier set included `b=0.5`; there `ω ≈ 0.196` is comparable to the modulation
+  peak `β√(2m) ≤ 0.245`, so some harmonic-phase draws lock the phase (`ω+g ≤ 0`) and
+  turn that carrier into a constant. At `b ≥ 2.5`, `min(ω+g) ≥ 0.78`; `make_phase_map`
+  asserts this.
 - Generalized circle map per timestep with `m` harmonics and fixed phase-modulation RMS
   `β=0.1`.
 - One model per `m`; all carriers in a model share the same `m`. Within a seed the four
@@ -77,18 +81,19 @@ the learning curves have plateaued.
   full history-to-next map `H_m` also contains phase inference. We therefore claim
   control of latent map order, not ambient `R^L` Fourier rank; circle maps are chosen
   for power and state-dimension control.
-- Result: nonlinear maps are slower than the pure rotation, but the nonlinear ordering
-  is not monotone. `m=2` is on average slowest; `m=3` is faster for two of three
-  harmonic-phase realizations. All arms still improve at 32k, so this is not a
-  converged-floor result.
-- The useful claim is therefore “map nonlinearity carries a learning cost; harmonic
-  count alone is not a scalar complexity ordering.”
+- Result (safe carriers): nonlinear maps are slower than the pure rotation, and final
+  variance is monotone in `m`: `0.9997 > 0.9994 > 0.9989 > 0.9964` for `m=0..3`. At
+  `t(NMSE≤0.02)`, `m=0` takes 384–512 steps and `m=3` 768; `m=1` and `m=2` are close
+  (512–640). Seed variance is small. All arms still improve at 32k.
+- The earlier `b=0.5` run produced a spurious non-monotone ordering because phase
+  locking turned one carrier into a constant. Do not report those numbers.
 
 ## Immediate work
 
-1. For group 2, decide whether to add more harmonic-phase realizations or define a
-   realized-map complexity statistic. Do not present `m` as a monotone ordering.
-2. Build the group-2 blog figure around seed variability and the non-monotone result.
+1. For group 2, report the monotone final-variance ordering and the `m=0` vs `m=3`
+   separation; do not overclaim an ordering between `m=1` and `m=2`.
+2. Build the group-2 blog figure around the learning curves and the `m=0` vs `m=3`
+   separation. Note that the earlier non-monotone result was a locking artifact.
 3. Add the scale-matched noiseless control for SNR before making a strong causal noise
    claim.
 4. Re-run group 0 with early checkpoints for an unbiased scaling exponent.

@@ -3,9 +3,10 @@
 ## TLDR
 
 Adding nonlinearity to the one-step phase map slows learning relative to a pure
-rotation, but harmonic count is not a scalar complexity ordering. With power, carriers,
-state dimension, and initialization fixed, `m=2` is on average slower than `m=3`, and
-the ordering varies strongly across harmonic-phase realizations.
+rotation, and the slowdown is largest at the highest order once the carrier is in the
+no-lock regime. With power, carriers, state dimension, and initialization fixed,
+`m=0` reaches the highest final variance and `m=3` the lowest; `m=1` and `m=2` are
+close.
 
 ## What it does
 
@@ -18,7 +19,7 @@ x_i(t)=A_i\cos\theta_i(t),
 \sum_{k=1}^{m}\gamma_k\sin(k\theta_i(t)+\phi_k).
 \]
 
-- `ω_i` sets the carrier frequency.
+- `ω_i` sets the base carrier frequency.
 - `m` is the discrete complexity level: 0 is a pure rotation; 1, 2, and 3 add
   nonlinear phase harmonics.
 - Phase advances are defined per timestep, independent of patch boundaries.
@@ -30,12 +31,16 @@ x_i(t)=A_i\cos\theta_i(t),
 - Phase recurrence is evaluated in float64; float32 accumulation creates spurious
   sidebands over long records.
 
-Fixed carriers are `b = {0.5, 2.5, 4.5, 6.5}` cycles/patch. They are shared by every
-seed and every `m`.
+Fixed carriers are `b = {2.5, 4.5, 6.5}` cycles/patch. They are shared by every seed
+and every `m`. An earlier set included `b=0.5`, where `ω = 2πb/k ≈ 0.196` is comparable
+to the maximum modulation `β√(2m) ≤ 0.245`; some harmonic-phase draws then satisfy
+`ω + g(θ) ≤ 0`, the phase locks, and that carrier becomes a constant. At `b ≥ 2.5`,
+`min(ω + g) ≥ 0.78`, so no carrier can lock; the realized rotation number is within 1%
+of nominal. `make_phase_map` asserts this condition.
 
 - `k=16`, `ctx=512`, `H=64`, two layers, four heads.
 - 32,768 steps, batch 128, checkpoints every 128 steps.
-- Each model contains all four carriers at one `m`; models are not mixtures of map
+- Each model contains all three carriers at one `m`; models are not mixtures of map
   orders. A mixed model would make full-waveform error impossible to attribute.
 - Within a seed, `m=0,1,2,3` share carriers, initial phases, map phases, initial
   weights, and batch order. The three seeds vary phases, initialization, and batch
@@ -50,15 +55,16 @@ seed and every `m`.
 | --- | --- | --- |
 | total power | yes | constant envelope plus per-window RMS normalization |
 | intrinsic state dimension | yes | one scalar phase per carrier; `m` adds harmonics, not state variables |
-| carrier set | yes | four fixed carriers across all seeds and levels |
+| carrier set | yes | three fixed carriers across all seeds and levels |
 | map nonlinear order | manipulated | `m=0..3` |
 | observed spectral bandwidth | **not fixed** | phase modulation creates sidebands; measured and reported |
 | waveform complexity | changes with `m` | this is the treatment |
 
-The experiment supports a narrower statement than “higher order is harder”:
+The experiment supports a bounded statement:
 
-> Nonlinear phase maps change the learning schedule relative to a pure rotation, but
-> harmonic count alone is not a monotone measure of difficulty.
+> Nonlinear phase maps slow learning relative to a pure rotation, and the slowdown is
+> largest at the highest order in the no-lock regime. Adjacent orders `m=1` and `m=2`
+> are not resolved.
 
 It does **not** support a cross-carrier invariance claim. A phase-modulated signal is
 not a single carrier line: most power may sit near a carrier, but sidebands change the
@@ -108,8 +114,9 @@ observable function. It is not the full target map, because the model does not o
 
 ![data pilot](figs/data_pilot.png)
 
-*One carrier at `b=1` with identical initial phase. (a) Waveforms for `m=0..3`,
-vertically offset. (b) Phase-map derivative over one phase period. (c) Spectra.*
+*Pilot at `b=1` so the carrier sits on an FFT bin; the experiment uses
+`b={2.5,4.5,6.5}`. (a) Waveforms for `m=0..3`, vertically offset. (b) Phase-map
+derivative over one phase period. (c) Spectra.*
 
 | `m` | min derivative | phase RMS | spectral entropy | 95% bandwidth | RMS |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -118,10 +125,13 @@ vertically offset. (b) Phase-map derivative over one phase period. (c) Spectra.*
 | 2 | 0.741 | 0.100 | 0.028 | 0.150 | 0.707 |
 | 3 | 0.603 | 0.100 | 0.146 | 0.133 | 0.707 |
 
-- All maps remain orientation-preserving (`min derivative > 0`).
+- All maps remain orientation-preserving (`min derivative > 0`). This checks
+  invertibility, not phase advance; the generator separately asserts `min(ω+g)>0` for
+  the actual carriers.
 - Total RMS is exactly fixed at `sqrt(0.5)`.
-- Neither 95% bandwidth nor spectral entropy increases monotonically with `m`, so the
-  pilot does not support a simple “more sidebands means slower learning” explanation.
+- Neither 95% bandwidth nor spectral entropy increases monotonically with `m`. The
+  learning result is therefore about the latent map, not simply the observed sideband
+  width.
 
 ## Results
 
@@ -131,23 +141,24 @@ vertically offset. (b) Phase-map derivative over one phase period. (c) Spectra.*
 thick curves are means. (a) Held-out normalized MSE. (b) Steps to normalized-MSE
 thresholds; marks are seeds, dashes are means. (c) Final error.*
 
-| `m` | variance at 4096 | final variance | final range | `t(NMSE≤0.1)`, seeds |
+| `m` | variance at 4096 | final variance | final range | `t(NMSE≤0.02)`, seeds |
 | ---: | ---: | ---: | ---: | --- |
-| 0 | 0.9971 | 0.9996 | 0.9996–0.9996 | 256, 256, 256 |
-| 1 | 0.9813 | 0.9977 | 0.9975–0.9978 | 512, 512, 512 |
-| 2 | 0.9603 | 0.9936 | 0.9866–0.9990 | 3,072, 768, 256 |
-| 3 | 0.9753 | 0.9928 | 0.9884–0.9962 | 256, 384, 2,048 |
+| 0 | 0.9983 | 0.9997 | 0.9997–0.9998 | 384, 512, 384 |
+| 1 | 0.9964 | 0.9994 | 0.9994–0.9995 | 640, 640, 512 |
+| 2 | 0.9958 | 0.9989 | 0.9989–0.9990 | 640, 640, 640 |
+| 3 | 0.9926 | 0.9964 | 0.9960–0.9968 | 768, 768, 768 |
 
-- `m=0` is consistently fastest and reaches the highest final variance.
-- Every nonlinear map is slower than the pure rotation at 4096 steps on average.
-- The nonlinear ordering is **not monotone**: `m=2` is the slowest on average, while
-  `m=3` is faster for two of three seeds. Seed 0's `m=3` reaches `NMSE≤0.1` at the same
-  first checkpoint as `m=0`.
+- `m=0` is fastest and reaches the highest final variance; `m=3` is slowest and lowest.
+  Final variance is monotone in `m`: `0.9997 > 0.9994 > 0.9989 > 0.9964`.
+- Every nonlinear map is slower than the pure rotation at 4096 steps: `0.9964–0.9926`
+  versus `0.9983`.
+- The separation is modest at loose thresholds: at `NMSE≤0.05` every arm reaches by 256
+  steps. At `NMSE≤0.02`, `m=0` takes 384–512 steps, `m=3` takes 768, while `m=1` and
+  `m=2` are close (512–640). Do not overclaim an ordering between adjacent `m`.
+- Seed variance is small; the three harmonic-phase realizations agree on the ordering.
+  The earlier `b=0.5` run was different because phase locking turned one carrier into a
+  constant; that run is not evidence about `m`.
 - All arms improve through 32k steps; there is no evidence for a converged floor.
-- The three seeds differ in harmonic phases. This variation is large enough that
-  “number of harmonics” cannot be treated as a scalar complexity axis. A useful next
-  step would be more map realizations, or a complexity statistic tied to the realized
-  phase map rather than its formal order.
 
 ## Blog visualisation
 
