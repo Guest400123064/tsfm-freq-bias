@@ -116,10 +116,11 @@ Those are different physical variables and should be measured separately.
 
 1. A dense-spectrum power ladder with fixed total power and randomized
    frequency-power assignment. Final error follows assigned power almost perfectly and
-   has no meaningful relationship with carrier frequency.
-2. A white-noise dose response plus a red/anti-red assignment control. Noise slows the
-   schedule; swapping which frequencies are loud leaves matched power levels almost
-   unchanged.
+   has no meaningful relationship with carrier frequency; time-to-threshold scales as
+   `P^-1.08`, close to the linear-readout `P^-1` baseline.
+2. A white-noise dose response plus a red/anti-red assignment control. Noise lowers the
+   attainable clean-probe floor and slows the schedule; these are distinct quantities.
+   Swapping which frequencies are loud leaves matched power levels almost unchanged.
 3. A separate map-complexity experiment with fixed carriers, fixed total power, and a
    single scalar phase state per carrier. Nonlinear maps are slower than a pure
    rotation, and the slowdown is largest at the highest order in the no-lock regime:

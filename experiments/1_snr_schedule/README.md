@@ -16,8 +16,9 @@ Noise is never synthesized from a window's own FFT coefficients.
 
 `snr` suite: all tones have equal power. Sweep noise amplitude
 `sigma_rel ∈ {0, 0.25, 0.5, 1.0}`, where `sigma_rel` is noise RMS divided by signal
-RMS. Carrier frequency and signal power are constant, so every band has the same
-nominal SNR.
+RMS. The JSON stores absolute `sigma`; the figure converts it back to `sigma_rel`.
+Carrier frequency and signal power are constant, so every band has the same nominal
+SNR.
 
 `assignment` suite: hold the same power multiset and noise variance, but mirror the
 power-frequency assignment.
@@ -51,17 +52,26 @@ thresholds; thresholds that are never reached are omitted.*
 | 0 | 0.995 | 0.041 | 0.041 | 723 | 1,815 | 5,620 |
 | 0.25 | 0.965 | 0.058 | 0.209 | 756 | 1,981 | 7,956 |
 | 0.5 | 0.950 | 0.077 | 0.267 | 875 | 4,440 | 19,072 |
-| 1.0 | 0.844 | 0.181 | 0.460 | 3,119 | 22,645 (73/96) | 0/96 |
+| 1.0 | 0.844 | 0.181 | 0.460 | 3,119 | 22,645 (73/96) | not reached |
 
-- Stronger noise delays every clean-probe threshold and raises final clean
-  attenuation.
+- Stronger noise delays the `Δk≤0.5` and `Δk≤0.2` thresholds and raises final clean
+  attenuation; the `Δk≤0.1` threshold is not reached at `σ_rel=1` within 32k.
+- The `Δk≤0.1` column is **not** a schedule for `σ_rel=1`: at 32k the mean clean `Δk`
+  is 0.181 (per-band min 0.134), so the threshold lies below every band's current
+  error. The clean `r` is still rising at 32k (`0.815` at 24k → `0.845` at 32k), so
+  this is a budget-limited measurement, not a demonstrated fixed point.
+- In the linear readout picture, context noise alone would *speed* convergence to a
+  shrunk optimum (Hessian `P+σ²`). The observed `t(Δk≤0.5)` is 4.3× slower at
+  `σ_rel=1`, so the net slowdown is not explained by ridge alone; target-noise
+  gradient variance and nonlinear optimization dominate.
 - The training loss also contains irreducible target noise, so raw loss is not a
   convergence measure; all schedule claims use clean-probe coefficients.
 - This is a fixed 32k-step result. The clean probe has no observation noise, so its
   optimal prediction is `r=1`; the observed attenuation is a learned prior or
   finite-budget effect, not an information-theoretic floor.
-- Not yet implemented: a scale-matched noiseless arm to separate noise from increased
-  input RMS.
+- A context/target noise 2×2 and a scale-matched noiseless control are mechanism
+  diagnostics; they are deferred to the ready version. The artificial context-only and
+  target-only arms are not realistic data-generating processes.
 
 ### Red versus anti-red: frequency control
 
@@ -85,6 +95,10 @@ Level 0 is censored at `Δk≤0.5` in both assignments. Matched-level absolute d
 are at most 0.017 in final `Δk`. After subtracting level means, the frequency residual
 has Spearman `0.036` with final error. Reversing which frequencies are loud does not
 change the learning schedule.
+
+Within this suite, power level and in-band SNR are collinear: the noise has fixed
+absolute `σ`, so louder bands also have higher SNR. The red/anti-red control isolates
+frequency, not power versus SNR; power alone is handled by the power experiment.
 
 ## How to run
 

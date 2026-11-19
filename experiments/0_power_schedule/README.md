@@ -37,6 +37,10 @@ strongest `128/1020`.
 - Checkpoints: every 128 steps.
 - Readout: clean probes; per-band `r`, `Δk`, and held-out variance explained.
 
+The simplest baseline is a linear readout trained with MSE. A band's Hessian
+eigenvalue scales with its power `P`, so its relative error decays as `exp(-ηPt)` and
+the time to a fixed `Δk` scales as `1/P`; this predicts `γ=1`.
+
 The scaling fit is
 
 \[
@@ -70,14 +74,16 @@ assigned power.*
 - Final `Δk` is strictly monotone in level means; Spearman with log power is
   `−0.992`. Spearman with carrier frequency is `−0.090`.
 - The `Δk≤0.5` fit uses all eight levels: `γ=1.083`, `R²=0.999`. Per-run fits give
-  `γ = 1.09, 1.10, 1.06`.
-- Stricter targets: `Δk≤0.2` reaches 82/96 bands over seven levels, `γ=1.022`,
-  `R²=0.997`; `Δk≤0.1` reaches 59/96 bands over five levels, `γ=0.935`,
-  `R²=0.999`.
+  `γ = 1.09, 1.10, 1.06`. The stricter targets give `γ=1.022` (`Δk≤0.2`) and
+  `γ=0.935` (`Δk≤0.1`), bracketing the linear-readout prediction `γ=1`.
+- An earlier matched-filter run reported `γ≈0.55`; that fit was distorted by
+  right-censoring the fastest bands at the checkpoint floor. Uncensored fits give
+  `γ≈1.1`, and the current joint-inversion/base-2-ladder measurement is consistent
+  with that correction.
 - Held-out variance explained is at least 0.997.
 - The fastest level reaches the first checkpoint (128 steps), so its time is
-  right-censored at the resolution floor. The exponent is therefore approximate and
-  should be refined with earlier checkpoints before publication.
+  right-censored at the resolution floor. Excluding level 7 changes `γ` from 1.083 to
+  1.078, so the bias is small; report both.
 
 ## How to run
 

@@ -52,12 +52,16 @@ the learning curves have plateaued.
 ### Group 1 details
 
 - Equal-power SNR dose: clean-probe attenuation and time-to-threshold both worsen with
-  noise.
+  noise. The `Δk≤0.1` cell at `σ_rel=1` is a floor/budget artifact, not a schedule:
+  the 32k mean clean `Δk` is 0.181 and the curve is still moving. The linear ridge
+  picture predicts faster convergence to a lower floor, so the observed 4.3× slowdown
+  is not ridge alone; target-noise gradient variance is the likely dominant channel.
 - Red vs anti-red assignment swaps which carrier frequencies are loud while holding the
   power multiset and noise fixed. Matched levels differ by at most `0.017` in final
   `Δk`; frequency residual correlates `0.036` with error.
-- Missing control: a scale-matched noiseless arm is still needed to separate noise from
-  the larger input RMS at high noise.
+- The context/target noise 2×2 and a scale-matched control are mechanism diagnostics;
+  they are deferred to the ready version. The artificial context-only/target-only arms
+  are not realistic data-generating processes; the main table uses whole-series noise.
 - Clean-probe attenuation is a learned prior or finite-budget effect, not an
   information-theoretic floor: a clean input determines the tone.
 
@@ -94,8 +98,9 @@ the learning curves have plateaued.
    separation; do not overclaim an ordering between `m=1` and `m=2`.
 2. Build the group-2 blog figure around the learning curves and the `m=0` vs `m=3`
    separation. Note that the earlier non-monotone result was a locking artifact.
-3. Add the scale-matched noiseless control for SNR before making a strong causal noise
-   claim.
+3. For SNR, report the attainable floor and a relative time-to-threshold, not the
+   absolute `Δk≤0.1` cell. The context/target 2×2 and scale-matched control are deferred
+   to the ready version.
 4. Re-run group 0 with early checkpoints for an unbiased scaling exponent.
 5. Convert the real-data power spectrum plus noise floor into an illustrative step
    estimate. Keep it explicitly an extrapolation from synthetic controls.

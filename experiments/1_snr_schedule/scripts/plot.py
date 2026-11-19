@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -71,7 +72,7 @@ def plot_snr(data, output):
     for color, sigma in zip(colors, sigmas, strict=True):
         clean = [curve(grouped[sigma], "clean_dk", step) for step in steps]
         noisy = [curve(grouped[sigma], "noisy_dk", step) for step in steps]
-        label = f"σ_rel={sigma:g}"
+        label = f"σ_rel={sigma / math.sqrt(0.5):g}"
         axes[0].plot(steps, clean, color=color, lw=1.4, label=label)
         axes[1].plot(steps, noisy, color=color, lw=1.4, label=label)
 
@@ -112,7 +113,7 @@ def plot_snr(data, output):
     axes[2].set(
         yscale="log",
         xticks=positions,
-        xticklabels=[f"{sigma:g}" for sigma in sigmas],
+        xticklabels=[f"{sigma / math.sqrt(0.5):g}" for sigma in sigmas],
         xlabel="Noise / signal RMS",
         ylabel="Steps to threshold",
         title="(c) Time to clean thresholds",
@@ -127,7 +128,7 @@ def plot_snr(data, output):
             row for arm, row in zip(arms, rows, strict=True) if arm["sigma"] == sigma
         ]
         print(
-            f"sigma_rel={sigma:g} "
+            f"sigma_rel={sigma / math.sqrt(0.5):g} "
             f"clean_r={mean(mean(row['clean_r']) for row in selected):.3f} "
             f"clean_dk={mean(mean(row['clean_dk']) for row in selected):.3f} "
             f"noisy_dk={mean(mean(row['noisy_dk']) for row in selected):.3f}"
