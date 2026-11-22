@@ -4,9 +4,11 @@ import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 
 from bias.data import make_phase_map
+from bias.plotting import PALETTE, WIDE, use_style
 
 K = 16
 CARRIER = 1.0
@@ -14,18 +16,6 @@ BETA = 0.1
 LEVELS = (0, 1, 2, 3)
 SEED = 2027
 N_SPEC = 16_384
-
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.size": 8,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.grid": True,
-        "grid.alpha": 0.15,
-        "figure.facecolor": "white",
-    }
-)
 
 
 def harmonic_phases():
@@ -75,15 +65,16 @@ def spectral_diagnostics(x):
 
 
 def main():
+    use_style()
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fig", type=Path, required=True)
     args = parser.parse_args()
     phases = harmonic_phases()
     rows = []
-    colors = plt.get_cmap("viridis")(torch.linspace(0, 0.85, len(LEVELS)).numpy())
+    colors = PALETTE
 
-    fig, axes = plt.subplots(1, 3, figsize=(7, 2.55), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=WIDE, constrained_layout=True)
     for color, level in zip(colors, LEVELS, strict=True):
         x = make_phase_map([CARRIER], [level], BETA, 1, N_SPEC, K, SEED)[0]
         spec = spectral_diagnostics(x)
@@ -98,9 +89,10 @@ def main():
         rows.append(diagnostics)
 
         time = torch.arange(256)
-        axes[0].plot(
-            time,
-            x[:256] + (len(LEVELS) - 1 - level) * 2.1,
+        sns.lineplot(
+            x=time,
+            y=x[:256] + (len(LEVELS) - 1 - level) * 2.1,
+            ax=axes[0],
             color=color,
             lw=0.9,
         )
@@ -118,12 +110,20 @@ def main():
         for k in range(1, level + 1):
             gamma = BETA * math.sqrt(2 / level)
             derivative += k * gamma * torch.cos(k * theta + phases[k - 1])
-        axes[1].plot(theta, derivative, color=color, lw=1.2, label=f"m={level}")
+        sns.lineplot(
+            x=theta,
+            y=derivative,
+            ax=axes[1],
+            color=color,
+            lw=1.2,
+            label=f"m={level}",
+        )
 
         mask = spec["frequency"] <= 4
-        axes[2].plot(
-            spec["frequency"][mask],
-            10 * torch.log10(spec["power"][mask] / spec["power"].max()),
+        sns.lineplot(
+            x=spec["frequency"][mask],
+            y=10 * torch.log10(spec["power"][mask] / spec["power"].max()),
+            ax=axes[2],
             color=color,
             lw=1.0,
             label=f"m={level}",
@@ -131,6 +131,7 @@ def main():
 
     axes[0].set(
         xlabel="Time (samples)",
+        ylabel="",
         yticks=[],
         title="(a) Waveforms",
         xlim=(0, 255),
@@ -147,7 +148,8 @@ def main():
         title="(c) Spectra",
         xlim=(0, 4),
     )
-    fig.savefig(args.fig, dpi=300)
+    fig.align_labels(axes)
+    fig.savefig(args.fig)
 
     args.output.write_text(json.dumps(rows, indent=2) + "\n")
     for row in rows:

@@ -4,18 +4,10 @@ import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.size": 8,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.grid": True,
-        "grid.alpha": 0.15,
-        "figure.facecolor": "white",
-    }
-)
+from bias.plotting import BLUE, OCHRE, PALETTE, VERMILION, WIDE, use_style
+
 THRESHOLDS = (0.5, 0.2, 0.1)
 
 
@@ -59,24 +51,32 @@ def times_to_threshold(arms, threshold):
 
 
 def plot_snr(data, output):
+    use_style()
     arms = data["arms"]
     sigmas = sorted({arm["sigma"] for arm in arms})
     grouped = {
         sigma: [arm for arm in arms if arm["sigma"] == sigma] for sigma in sigmas
     }
     steps = sorted({record["step"] for arm in arms for record in arm["records"]})
-    cmap = plt.get_cmap("viridis")
-    colors = [cmap(i / (len(sigmas) - 1)) for i in range(len(sigmas))]
+    colors = PALETTE
 
-    fig, axes = plt.subplots(1, 3, figsize=(7, 2.55), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=WIDE, constrained_layout=True)
     for color, sigma in zip(colors, sigmas, strict=True):
         clean = [curve(grouped[sigma], "clean_dk", step) for step in steps]
         noisy = [curve(grouped[sigma], "noisy_dk", step) for step in steps]
         label = f"σ_rel={sigma / math.sqrt(0.5):g}"
-        axes[0].plot(steps, clean, color=color, lw=1.4, label=label)
-        axes[1].plot(steps, noisy, color=color, lw=1.4, label=label)
+        sns.lineplot(x=steps, y=clean, ax=axes[0], color=color, lw=1.4, label=label)
+        sns.lineplot(
+            x=steps,
+            y=noisy,
+            ax=axes[1],
+            color=color,
+            lw=1.4,
+            label=label,
+            legend=False,
+        )
 
-    threshold_colors = ("#0072B2", "#D55E00", "#009E73")
+    threshold_colors = (BLUE, VERMILION, OCHRE)
     positions = list(range(len(sigmas)))
     for threshold, color in zip(THRESHOLDS, threshold_colors, strict=True):
         xs, ys = [], []
@@ -85,12 +85,13 @@ def plot_snr(data, output):
             if times:
                 xs.append(position)
                 ys.append(mean(times))
-        axes[2].plot(
-            xs,
-            ys,
+        sns.lineplot(
+            x=xs,
+            y=ys,
+            ax=axes[2],
             color=color,
             marker="o",
-            ms=4,
+            markersize=4,
             lw=1.2,
             label=f"Δk≤{threshold:g}",
         )
@@ -119,7 +120,8 @@ def plot_snr(data, output):
         title="(c) Time to clean thresholds",
     )
     axes[2].legend(frameon=False, fontsize=6)
-    fig.savefig(output, dpi=300)
+    fig.align_labels(axes)
+    fig.savefig(output)
 
     final, rows = final_rows(arms)
     print(f"final step {final}")
@@ -164,25 +166,37 @@ def grouped_by_level(arms):
 
 
 def plot_assignment(data, output):
+    use_style()
     levels = grouped_by_level(data["arms"])
     styles = {
-        "red": ("#0072B2", "o", "red: loud low freq"),
-        "anti_red": ("#D55E00", "s", "anti-red: loud high freq"),
+        "red": (VERMILION, "o", "red: loud low frequency"),
+        "anti_red": (BLUE, "s", "anti-red: loud high frequency"),
     }
 
-    fig, axes = plt.subplots(1, 2, figsize=(7, 2.55), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=WIDE, constrained_layout=True)
     for arm_name, (color, marker, label) in styles.items():
         xs = list(range(8))
         dk = [mean(value for value, _ in levels[level][arm_name]) for level in xs]
-        axes[0].plot(xs, dk, color=color, marker=marker, ms=4, lw=1.3, label=label)
+        sns.lineplot(
+            x=xs,
+            y=dk,
+            ax=axes[0],
+            color=color,
+            marker=marker,
+            markersize=4,
+            lw=1.3,
+            label=label,
+        )
         for level in xs:
-            axes[0].scatter(
-                [level] * len(levels[level][arm_name]),
-                [value for value, _ in levels[level][arm_name]],
+            sns.scatterplot(
+                x=[level] * len(levels[level][arm_name]),
+                y=[value for value, _ in levels[level][arm_name]],
+                ax=axes[0],
                 color=color,
                 marker=marker,
-                s=9,
+                s=16,
                 alpha=0.35,
+                legend=False,
             )
 
         time_x, time_y = [], []
@@ -191,12 +205,13 @@ def plot_assignment(data, output):
             if reached:
                 time_x.append(level)
                 time_y.append(mean(reached))
-        axes[1].plot(
-            time_x,
-            time_y,
+        sns.lineplot(
+            x=time_x,
+            y=time_y,
+            ax=axes[1],
             color=color,
             marker=marker,
-            ms=4,
+            markersize=4,
             lw=1.3,
             label=label,
         )
@@ -214,7 +229,8 @@ def plot_assignment(data, output):
         ylabel="Steps to clean Δk ≤ 0.5",
         title="(b) Time to threshold by assigned power",
     )
-    fig.savefig(output, dpi=300)
+    fig.align_labels(axes)
+    fig.savefig(output)
 
     for level in range(1, 8):
         red = mean(value for value, _ in levels[level]["red"])

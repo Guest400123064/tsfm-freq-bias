@@ -4,20 +4,12 @@ import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LogNorm
 
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.size": 8,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.grid": True,
-        "grid.alpha": 0.15,
-        "figure.facecolor": "white",
-    }
-)
+from bias.plotting import SEQUENTIAL, WIDE, use_style
+
 THRESHOLDS = (0.5, 0.2, 0.1)
 PRIMARY_THRESHOLD = 0.5
 MARKERS = ("o", "s", "^")
@@ -106,6 +98,7 @@ def fit_loglog(times):
 
 
 def main():
+    use_style()
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -118,9 +111,9 @@ def main():
     marker_of = dict(zip(seeds, MARKERS, strict=True))
     unique_powers = sorted({power for row in records for power in row["powers"]})
     norm = LogNorm(vmin=min(unique_powers), vmax=max(unique_powers))
-    cmap = plt.get_cmap("viridis")
+    cmap = sns.color_palette(SEQUENTIAL, as_cmap=True)
 
-    fig, axes = plt.subplots(1, 3, figsize=(7, 2.55), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=WIDE, constrained_layout=True)
 
     for level, power in enumerate(unique_powers):
         curves = []
@@ -133,9 +126,10 @@ def main():
                 if assigned == level
             ]
             curves.append(mean(values))
-        axes[0].plot(
-            steps,
-            curves,
+        sns.lineplot(
+            x=steps,
+            y=curves,
+            ax=axes[0],
             color=cmap(norm(power)),
             lw=1.6,
             label=f"{power / min(unique_powers):.0f}x",
@@ -143,13 +137,15 @@ def main():
 
     times = threshold_times(records, PRIMARY_THRESHOLD, final_step)
     for point in times:
-        axes[1].scatter(
-            point["power"],
-            point["step"],
+        sns.scatterplot(
+            x=[point["power"]],
+            y=[point["step"]],
+            ax=axes[1],
             color=cmap(norm(point["power"])),
             marker=marker_of[point["seed"]] if point["reached"] else "x",
-            s=13,
+            s=18,
             alpha=0.75,
+            legend=False,
         )
     fit = fit_loglog(times)
     if fit:
@@ -157,9 +153,10 @@ def main():
             fit["min_power"] * (fit["max_power"] / fit["min_power"]) ** (i / 40)
             for i in range(41)
         ]
-        axes[1].plot(
-            grid,
-            [math.exp(fit["intercept"]) * p ** (-fit["gamma"]) for p in grid],
+        sns.lineplot(
+            x=grid,
+            y=[math.exp(fit["intercept"]) * p ** (-fit["gamma"]) for p in grid],
+            ax=axes[1],
             color="black",
             lw=1.2,
             label=f"fit: γ={fit['gamma']:.2f}",
@@ -171,13 +168,15 @@ def main():
         for frequency, power, dk in zip(
             row["frequencies"], row["powers"], row["dk"], strict=True
         ):
-            axes[2].scatter(
-                frequency,
-                dk,
+            sns.scatterplot(
+                x=[frequency],
+                y=[dk],
+                ax=axes[2],
                 color=cmap(norm(power)),
                 marker=marker_of[row["seed"]],
-                s=13,
+                s=18,
                 alpha=0.75,
+                legend=False,
             )
 
     axes[0].set(
@@ -195,16 +194,6 @@ def main():
         ylabel=f"Steps to Δk ≤ {PRIMARY_THRESHOLD:g}",
         title=f"(b) Time to Δk ≤ {PRIMARY_THRESHOLD:g}",
     )
-    axes[1].text(
-        0.98,
-        0.03,
-        "× = censored",
-        transform=axes[1].transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=6,
-        color="0.35",
-    )
     axes[2].set(
         yscale="log",
         xlabel="Band b (cycles/patch)",
@@ -218,7 +207,8 @@ def main():
         shrink=0.45,
         label="Band power (log scale)",
     )
-    fig.savefig(args.output, dpi=300)
+    fig.align_labels(axes)
+    fig.savefig(args.output)
 
     observations = [
         (power, frequency, dk)

@@ -92,7 +92,7 @@ thresholds; thresholds that are never reached are omitted.*
 | 7 | 0.023 | 0.023 | 128 | 160 |
 
 Level 0 is censored at `Δk≤0.5` in both assignments. Matched-level absolute differences
-are at most 0.017 in final `Δk`. After subtracting level means, the frequency residual
+are at most 0.018 in final `Δk`. After subtracting level means, the frequency residual
 has Spearman `0.036` with final error. Reversing which frequencies are loud does not
 change the learning schedule.
 

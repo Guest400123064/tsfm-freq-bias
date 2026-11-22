@@ -3,18 +3,10 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.size": 8,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.grid": True,
-        "grid.alpha": 0.15,
-        "figure.facecolor": "white",
-    }
-)
+from bias.plotting import PALETTE, WIDE, use_style
+
 THRESHOLDS = (0.1, 0.05, 0.02)
 
 
@@ -35,6 +27,7 @@ def target_time(arm, threshold):
 
 
 def main():
+    use_style()
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -44,19 +37,20 @@ def main():
     levels = sorted({arm["level"] for arm in arms})
     seeds = sorted({arm["seed"] for arm in arms})
     steps = sorted({record["step"] for arm in arms for record in arm["records"]})
-    colors = plt.get_cmap("viridis")([0.1, 0.35, 0.6, 0.85])
+    colors = PALETTE
 
-    fig, axes = plt.subplots(1, 3, figsize=(7, 2.55), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=WIDE, constrained_layout=True)
     for color, level in zip(colors, levels, strict=True):
         curves = []
         for seed in seeds:
             arm = next(a for a in arms if a["level"] == level and a["seed"] == seed)
             curve = [record["mse"] / 0.5 for record in arm["records"]]
             curves.append(curve)
-            axes[0].plot(steps, curve, color=color, lw=0.6, alpha=0.25)
-        axes[0].plot(
-            steps,
-            [mean(curve[i] for curve in curves) for i in range(len(steps))],
+            sns.lineplot(x=steps, y=curve, ax=axes[0], color=color, lw=0.6, alpha=0.25)
+        sns.lineplot(
+            x=steps,
+            y=[mean(curve[i] for curve in curves) for i in range(len(steps))],
+            ax=axes[0],
             color=color,
             lw=1.6,
             label=f"m={level}",
@@ -66,16 +60,25 @@ def main():
         final_nmse = []
         for seed in seeds:
             arm = next(a for a in arms if a["level"] == level and a["seed"] == seed)
-            axes[2].scatter(
-                [level],
-                [arm["records"][-1]["mse"] / 0.5],
+            sns.scatterplot(
+                x=[level],
+                y=[arm["records"][-1]["mse"] / 0.5],
+                ax=axes[2],
                 color=color,
-                s=14,
+                s=20,
                 alpha=0.85,
+                legend=False,
             )
             final_nmse.append(arm["records"][-1]["mse"] / 0.5)
-        axes[2].scatter(
-            [level], [mean(final_nmse)], color="black", marker="_", s=90, zorder=3
+        sns.scatterplot(
+            x=[level],
+            y=[mean(final_nmse)],
+            ax=axes[2],
+            color="black",
+            marker="_",
+            s=90,
+            zorder=3,
+            legend=False,
         )
 
         for threshold, offset, marker in zip(
@@ -84,21 +87,25 @@ def main():
             times = [target_time(a, threshold) for a in arms if a["level"] == level]
             times = [time for time in times if time is not None]
             if times:
-                axes[1].scatter(
-                    [level + offset] * len(times),
-                    times,
+                sns.scatterplot(
+                    x=[level + offset] * len(times),
+                    y=times,
+                    ax=axes[1],
                     color=color,
                     marker=marker,
-                    s=14,
+                    s=20,
                     alpha=0.8,
+                    legend=False,
                 )
-                axes[1].scatter(
-                    [level + offset],
-                    [mean(times)],
+                sns.scatterplot(
+                    x=[level + offset],
+                    y=[mean(times)],
+                    ax=axes[1],
                     color="black",
                     marker="_",
                     s=60,
                     zorder=3,
+                    legend=False,
                 )
 
     axes[0].set(
@@ -117,7 +124,7 @@ def main():
     )
     for threshold, marker in zip(THRESHOLDS, ("o", "s", "^"), strict=True):
         axes[1].scatter(
-            [], [], color="0.3", marker=marker, s=14, label=f"≤{threshold:g}"
+            [], [], color="0.3", marker=marker, s=20, label=f"≤{threshold:g}"
         )
     axes[1].legend(frameon=False, fontsize=6, title="threshold")
     axes[2].set(
@@ -126,7 +133,8 @@ def main():
         ylabel="Final normalized MSE",
         title="(c) Final error at 32k",
     )
-    fig.savefig(args.output, dpi=300)
+    fig.align_labels(axes)
+    fig.savefig(args.output)
 
     for level in levels:
         selected = [a for a in arms if a["level"] == level]

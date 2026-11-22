@@ -209,7 +209,7 @@ The protocol carried over from the exploratory work is deliberately simple:
 - Bietti & Mairal, *On the Inductive Bias of Neural Tangent Kernels*, NeurIPS 2019.
 - Piao et al., *Fredformer: Frequency Debiased Transformer for Time Series
   Forecasting*, KDD 2024.
-- He et al., *SEMPO: Energy Bias in Time-Series Forecasting*, 2025.
+- He et al., *SEMPO: Lightweight Foundation Models for Time Series Forecasting*, 2025.
 - Sun et al., *FreIE*, 2025.
 - Dayag et al., *Filter then Attend / FilterFormer*, 2025.
 - Yu et al., *Tuning Frequency Bias of State Space Models*, ICLR 2025; and the
