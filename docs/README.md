@@ -58,6 +58,43 @@ a fixed linear functional of the observed history, and the target-map function c
 becomes a separate object from the carrier spectrum. That is the object manipulated in
 the map-complexity experiment.
 
+## Controlled forecasting setup
+
+The maintained experiments use `SimTFM`, a small, patched, input-space Transformer
+trained for next-patch forecasting. The target patch is held out. `SimTFM` is an
+instrument for controlled attribution, not a stand-in whose results automatically
+generalize to production TSFMs.
+
+Frequencies are reported in cycles per patch, `b = f · k / ctx`, where `f` is cycles
+per context window, `k` is patch size, and `ctx` is context length. The corresponding
+phase advance is `Δφ = 2πb`. Probe tones are at least one cycle per patch apart, and
+dense per-band coefficients are recovered by jointly inverting the full cos/sin basis
+rather than applying independent matched filters.
+
+Clean and in-distribution probes answer different questions. Shrinking an
+unpredictable component can be the correct conditional-mean prediction; a clean probe,
+whose deterministic target has optimal retention one, exposes attenuation that an
+in-distribution score could mistake for appropriate shrinkage. Neither reading implies
+a permanent floor unless the learning curves have plateaued.
+
+## Metrics and readout
+
+For a target band, amplitude retention and relative coefficient error are
+
+\[
+r = \frac{|Z_{\mathrm{pred}}|}{|Z_{\mathrm{clean\ target}}|},
+\qquad
+\Delta k = \frac{|Z_{\mathrm{pred}}-Z_{\mathrm{clean\ target}}|}
+{|Z_{\mathrm{clean\ target}}|}
+= |r e^{i\Delta\psi}-1|.
+\]
+
+Here `Δψ` is the phase error. Thus `r` isolates coherent amplitude, while `Δk` also
+includes phase error and satisfies `Δk ≥ |1-r|`, with equality when phase is locked. A
+`Δk` profile alone cannot distinguish amplitude suppression from phase error. The map-complexity experiment uses
+full-waveform error instead because phase modulation creates sidebands, making a
+single carrier coefficient insufficient.
+
 ## What the literature measures
 
 ### Classical spectral bias
@@ -127,6 +164,22 @@ Those are different physical variables and should be measured separately.
    `m=0` is fastest and `m=3` slowest, while `m=1` and `m=2` are close.
 4. A vocabulary and evaluation protocol: report signal spectrum, effective power/SNR,
    map complexity, schedule, and floor as different quantities.
+
+## Evaluation protocol
+
+The protocol carried over from the exploratory work is deliberately simple:
+
+- Name the object called "frequency": signal spectrum, latent map, or ambient
+  history-to-future function. Report its units and tokenizer scale.
+- Report per-band power and SNR rather than using band index as their proxy. A red
+  spectrum otherwise makes frequency, power, and SNR collinear.
+- Plot learning curves, state the training budget, and mark threshold censoring. Do not
+  infer an asymptotic floor from a fixed-budget deficit.
+- Use clean probes to measure recovery of deterministic signal, and in-distribution
+  probes to measure forecasting behaviour; do not treat the two as interchangeable.
+- Report amplitude retention alongside `Δk` when phase error may matter.
+- Measure the realized spectrum after modulation. A carrier parameter, bandwidth, and
+  dominant signal frequency are not interchangeable.
 
 ## Scope and open questions
 
