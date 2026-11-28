@@ -8,7 +8,7 @@ import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LogNorm
 
-from bias.plotting import SEQUENTIAL, WIDE, use_style
+from bias.plotting import SEQUENTIAL, WIDE, format_log_axis, use_style
 
 THRESHOLDS = (0.5, 0.2, 0.1)
 PRIMARY_THRESHOLD = 0.5
@@ -131,8 +131,8 @@ def main():
             y=curves,
             ax=axes[0],
             color=cmap(norm(power)),
-            lw=1.6,
-            label=f"{power / min(unique_powers):.0f}x",
+            lw=1.15,
+            legend=False,
         )
 
     times = threshold_times(records, PRIMARY_THRESHOLD, final_step)
@@ -143,8 +143,9 @@ def main():
             ax=axes[1],
             color=cmap(norm(point["power"])),
             marker=marker_of[point["seed"]] if point["reached"] else "x",
-            s=18,
-            alpha=0.75,
+            s=14,
+            alpha=0.6,
+            linewidth=0,
             legend=False,
         )
     fit = fit_loglog(times)
@@ -158,10 +159,9 @@ def main():
             y=[math.exp(fit["intercept"]) * p ** (-fit["gamma"]) for p in grid],
             ax=axes[1],
             color="black",
-            lw=1.2,
-            label=f"fit: γ={fit['gamma']:.2f}",
+            lw=1.0,
+            legend=False,
         )
-        axes[1].legend(frameon=False, fontsize=6, loc="upper right")
 
     final_rows = [row for row in records if row["step"] == final_step]
     for row in final_rows:
@@ -174,8 +174,9 @@ def main():
                 ax=axes[2],
                 color=cmap(norm(power)),
                 marker=marker_of[row["seed"]],
-                s=18,
-                alpha=0.75,
+                s=14,
+                alpha=0.6,
+                linewidth=0,
                 legend=False,
             )
 
@@ -184,22 +185,24 @@ def main():
         yscale="log",
         xlabel="Training step",
         ylabel="Band Δk",
-        title="(a) Learning curves by power level",
+        title="(a) Learning by power",
     )
-    axes[0].legend(frameon=False, fontsize=6, ncol=2, title="Relative power")
     axes[1].set(
         xscale="log",
         yscale="log",
         xlabel="Assigned band power",
         ylabel=f"Steps to Δk ≤ {PRIMARY_THRESHOLD:g}",
-        title=f"(b) Time to Δk ≤ {PRIMARY_THRESHOLD:g}",
+        title="(b) Time to threshold",
     )
     axes[2].set(
         yscale="log",
         xlabel="Band b (cycles/patch)",
         ylabel=f"Δk at step {final_step}",
-        title="(c) Final error vs frequency",
+        title="(c) Final error vs. carrier",
     )
+    for ax in axes:
+        format_log_axis(ax)
+    format_log_axis(axes[2], subs=(1.0, 2.0, 5.0))
     fig.colorbar(
         ScalarMappable(norm=norm, cmap=cmap),
         ax=axes,

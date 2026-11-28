@@ -94,15 +94,8 @@ def main():
             y=x[:256] + (len(LEVELS) - 1 - level) * 2.1,
             ax=axes[0],
             color=color,
-            lw=0.9,
-        )
-        axes[0].text(
-            2,
-            (len(LEVELS) - 1 - level) * 2.1,
-            f"m={level}",
-            ha="left",
-            va="center",
-            fontsize=7,
+            lw=0.75,
+            legend=False,
         )
 
         theta = torch.linspace(0, 2 * math.pi, 512)
@@ -115,8 +108,9 @@ def main():
             y=derivative,
             ax=axes[1],
             color=color,
-            lw=1.2,
+            lw=1.0,
             label=f"m={level}",
+            legend=False,
         )
 
         mask = spec["frequency"] <= 4
@@ -125,28 +119,32 @@ def main():
             y=10 * torch.log10(spec["power"][mask] / spec["power"].max()),
             ax=axes[2],
             color=color,
-            lw=1.0,
-            label=f"m={level}",
+            lw=0.85,
+            legend=False,
         )
 
     axes[0].set(
         xlabel="Time (samples)",
         ylabel="",
-        yticks=[],
+        yticks=[(len(LEVELS) - 1 - level) * 2.1 for level in LEVELS],
+        yticklabels=[f"m={level}" for level in LEVELS],
         title="(a) Waveforms",
         xlim=(0, 255),
     )
+    axes[0].grid(False)
     axes[1].set(
         xlabel="Phase θ",
-        ylabel="θ(t+1) - θ(t) derivative",
+        ylabel="Phase-map derivative",
         title="(b) Phase maps",
     )
-    axes[1].legend(frameon=False, fontsize=6)
+    handles, labels = axes[1].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside lower center", ncol=4)
     axes[2].set(
         xlabel="Frequency (cycles/patch)",
         ylabel="Power (dB)",
         title="(c) Spectra",
         xlim=(0, 4),
+        ylim=(-160, 5),
     )
     fig.align_labels(axes)
     fig.savefig(args.fig)

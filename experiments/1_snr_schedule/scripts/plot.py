@@ -6,7 +6,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from bias.plotting import BLUE, OCHRE, PALETTE, VERMILION, WIDE, use_style
+from bias.plotting import (
+    BLUE,
+    OCHRE,
+    PALETTE,
+    VERMILION,
+    WIDE,
+    format_log_axis,
+    use_style,
+)
 
 THRESHOLDS = (0.5, 0.2, 0.1)
 
@@ -64,15 +72,22 @@ def plot_snr(data, output):
     for color, sigma in zip(colors, sigmas, strict=True):
         clean = [curve(grouped[sigma], "clean_dk", step) for step in steps]
         noisy = [curve(grouped[sigma], "noisy_dk", step) for step in steps]
-        label = f"σ_rel={sigma / math.sqrt(0.5):g}"
-        sns.lineplot(x=steps, y=clean, ax=axes[0], color=color, lw=1.4, label=label)
+        label = rf"$\sigma_\mathrm{{rel}}={sigma / math.sqrt(0.5):g}$"
+        sns.lineplot(
+            x=steps,
+            y=clean,
+            ax=axes[0],
+            color=color,
+            lw=1.1,
+            label=label,
+            legend=False,
+        )
         sns.lineplot(
             x=steps,
             y=noisy,
             ax=axes[1],
             color=color,
-            lw=1.4,
-            label=label,
+            lw=1.1,
             legend=False,
         )
 
@@ -91,9 +106,10 @@ def plot_snr(data, output):
             ax=axes[2],
             color=color,
             marker="o",
-            markersize=4,
-            lw=1.2,
+            markersize=3.5,
+            lw=1.0,
             label=f"Δk≤{threshold:g}",
+            legend=False,
         )
 
     axes[0].set(
@@ -101,16 +117,15 @@ def plot_snr(data, output):
         yscale="log",
         xlabel="Training step",
         ylabel="Clean-probe Δk",
-        title="(a) Clean signal learning",
+        title="(a) Clean probe",
     )
     axes[1].set(
         xscale="log",
         yscale="log",
         xlabel="Training step",
         ylabel="Noisy-context Δk",
-        title="(b) Noisy-context prediction",
+        title="(b) Noisy context",
     )
-    axes[0].legend(frameon=False, fontsize=6)
     axes[2].set(
         yscale="log",
         xticks=positions,
@@ -119,7 +134,16 @@ def plot_snr(data, output):
         ylabel="Steps to threshold",
         title="(c) Time to clean thresholds",
     )
-    axes[2].legend(frameon=False, fontsize=6)
+    handles, labels = axes[0].get_legend_handles_labels()
+    threshold_handles, threshold_labels = axes[2].get_legend_handles_labels()
+    fig.legend(
+        handles + threshold_handles,
+        labels + threshold_labels,
+        loc="outside lower center",
+        ncol=7,
+    )
+    for ax in axes:
+        format_log_axis(ax)
     fig.align_labels(axes)
     fig.savefig(output)
 
@@ -169,8 +193,8 @@ def plot_assignment(data, output):
     use_style()
     levels = grouped_by_level(data["arms"])
     styles = {
-        "red": (VERMILION, "o", "red: loud low frequency"),
-        "anti_red": (BLUE, "s", "anti-red: loud high frequency"),
+        "red": (VERMILION, "o", "Red: loud low bands"),
+        "anti_red": (BLUE, "s", "Anti-red: loud high bands"),
     }
 
     fig, axes = plt.subplots(1, 2, figsize=WIDE, constrained_layout=True)
@@ -183,9 +207,10 @@ def plot_assignment(data, output):
             ax=axes[0],
             color=color,
             marker=marker,
-            markersize=4,
-            lw=1.3,
+            markersize=3.5,
+            lw=1.0,
             label=label,
+            legend=False,
         )
         for level in xs:
             sns.scatterplot(
@@ -194,8 +219,9 @@ def plot_assignment(data, output):
                 ax=axes[0],
                 color=color,
                 marker=marker,
-                s=16,
-                alpha=0.35,
+                s=12,
+                alpha=0.2,
+                linewidth=0,
                 legend=False,
             )
 
@@ -211,24 +237,28 @@ def plot_assignment(data, output):
             ax=axes[1],
             color=color,
             marker=marker,
-            markersize=4,
-            lw=1.3,
-            label=label,
+            markersize=3.5,
+            lw=1.0,
+            legend=False,
         )
 
     axes[0].set(
         yscale="log",
         xlabel="Power level (weak → loud)",
         ylabel="Final clean Δk",
-        title="(a) Final error by assigned power",
+        title="(a) Final error",
     )
-    axes[0].legend(frameon=False, fontsize=6)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside lower center", ncol=2)
     axes[1].set(
         yscale="log",
         xlabel="Power level (weak → loud)",
         ylabel="Steps to clean Δk ≤ 0.5",
-        title="(b) Time to threshold by assigned power",
+        title="(b) Time to threshold",
     )
+    for ax in axes:
+        format_log_axis(ax)
+    format_log_axis(axes[0], subs=(1.0, 2.0, 5.0))
     fig.align_labels(axes)
     fig.savefig(output)
 
